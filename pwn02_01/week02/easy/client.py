@@ -21,13 +21,33 @@ COOKIE_SECRET = 'TASTY_COOKIES123'
 SRC_PORT = randrange(10000, 50000)
 
 def generate_syn_cookie(client_ip: str, client_port: int, server_secret: str):
-    # TODO: please implement me!
-    return 0
-
+    hash_input = f'{client_ip}{client_port}{server_secret}'.encode()
+    return int(hashlib.sha256(hash_input).hexdigest(), 16) % (2**32)
 
 def handle_packet(packet: Packet):
-    # TODO: please implement me!
-    packet.show()
+    if packet.haslayer(TCP):
+        if ('S' in packet[TCP].flags):
+            print('received syn&ack')
+            iseq = packet[TCP].seq
+            iack = packet[TCP].ack
+            ip = IP(dst=SERVER_IP)
+            oack = TCP(
+                sport=SRC_PORT,
+                dport=SERVER_PORT,
+                flags='A',
+                seq=iack,
+                ack=iseq,
+            )
+            print('send ack')
+            send(ip/oack)
+        else:
+            print('received ack:')
+            packet.show()
+            print('result:')
+            packet.payload.payload.payload.show()
+    else:
+        print('no tcp:')
+        packet.show()
 
 # Function to start the packet sniffing
 def start_sniffing():    
@@ -49,7 +69,17 @@ def main():
 
     time.sleep(1) # wait for the sniffer to start.
 
-    # TODO: send intial first byte 
+    ip = IP(
+        dst=SERVER_IP,
+    )
+    osyn = TCP(
+        sport=SRC_PORT,
+        dport=SERVER_PORT,
+        flags='S',
+        seq=COOKIE,
+        ack=0,
+    )
+    send(ip/osyn)
 
 
 if __name__ == '__main__':
@@ -60,4 +90,4 @@ if __name__ == '__main__':
 
     logging.getLogger('asyncio').setLevel(logging.WARNING)
 
-    main()
+    main()          
