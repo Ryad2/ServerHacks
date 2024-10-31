@@ -25,9 +25,10 @@ def generate_syn_cookie(client_ip: str, client_port: int, server_secret: str):
     return int(hashlib.sha256(hash_input).hexdigest(), 16) % (2**32)
 
 def handle_packet(packet: Packet):
-    if packet.haslayer(TCP):
+    if packet.haslayer(TCP) and packet[TCP].dport == SRC_PORT:
         if ('S' in packet[TCP].flags):
             print('received syn&ack')
+            packet.show()
             iseq = packet[TCP].seq
             iack = packet[TCP].ack
             ip = IP(dst=SERVER_IP)
@@ -39,14 +40,15 @@ def handle_packet(packet: Packet):
                 ack=iseq,
             )
             print('send ack')
+            oack.show()
             send(ip/oack)
         else:
             print('received ack:')
             packet.show()
             print('result:')
             packet.payload.payload.payload.show()
-    else:
-        print('no tcp:')
+    elif packet.haslayer(TCP) and packet[TCP].sport == SRC_PORT:
+        print('sending:')
         packet.show()
 
 # Function to start the packet sniffing
