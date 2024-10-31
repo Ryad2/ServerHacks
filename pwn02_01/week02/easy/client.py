@@ -46,7 +46,7 @@ def handle_packet(packet: Packet):
             #print('received ack:')
             #packet[TCP].show()
             #print('result:')
-            print(packet.payload.payload.payload.load)
+            print(str(packet.payload.payload.payload.load)[2:-3])
     #elif packet.haslayer(TCP) and packet[TCP].sport == SRC_PORT:
         #print('sending:')
         #packet[TCP].show()
@@ -59,7 +59,7 @@ def start_sniffing():
         prn=handle_packet,
         store=False,
         monitor=True,
-        iface='enX0', # set to your interface. IMPORTANT: SET TO enX0 FOR AUTOGRADER!!!
+        iface='eth0', # set to your interface. IMPORTANT: SET TO enX0 FOR AUTOGRADER!!!
     )
 
 COOKIE = generate_syn_cookie(SERVER_IP, SERVER_PORT, COOKIE_SECRET)
