@@ -47,6 +47,7 @@ def handle_packet(packet: Packet):
             #packet[TCP].show()
             #print('result:')
             print(str(packet.payload.payload.payload.load)[2:-3])
+            exit()
     #elif packet.haslayer(TCP) and packet[TCP].sport == SRC_PORT:
         #print('sending:')
         #packet[TCP].show()
