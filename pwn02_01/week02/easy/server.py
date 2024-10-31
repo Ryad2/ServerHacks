@@ -105,7 +105,7 @@ def start_sniffing():
         prn=handle_packet,
         store=False,
         monitor=True,
-        iface='enX0',
+        iface='eth0',
     )
 
 
