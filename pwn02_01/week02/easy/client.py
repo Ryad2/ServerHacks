@@ -18,7 +18,7 @@ SERVER_IP = '131.159.15.68' # don't use the domain name in this case
 SERVER_PORT = 20102
 COOKIE_SECRET = 'TASTY_COOKIES123'
 
-SRC_PORT = randrange(10000, 50000)
+SRC_PORT = 46732 # randrange(10000, 50000)
 
 def generate_syn_cookie(client_ip: str, client_port: int, server_secret: str):
     hash_input = f'{client_ip}{client_port}{server_secret}'.encode()
@@ -27,8 +27,8 @@ def generate_syn_cookie(client_ip: str, client_port: int, server_secret: str):
 def handle_packet(packet: Packet):
     if packet.haslayer(TCP) and packet[TCP].dport == SRC_PORT:
         if ('S' in packet[TCP].flags):
-            print('received syn&ack')
-            packet.show()
+            #print('received syn&ack')
+            #packet[TCP].show()
             iseq = packet[TCP].seq
             iack = packet[TCP].ack
             ip = IP(dst=SERVER_IP)
@@ -39,17 +39,18 @@ def handle_packet(packet: Packet):
                 seq=iack,
                 ack=iseq,
             )
-            print('send ack')
-            oack.show()
+            #print('send ack')
+            #oack.show()
             send(ip/oack)
         else:
-            print('received ack:')
-            packet.show()
-            print('result:')
-            packet.payload.payload.payload.show()
-    elif packet.haslayer(TCP) and packet[TCP].sport == SRC_PORT:
-        print('sending:')
-        packet.show()
+            #print('received ack:')
+            #packet[TCP].show()
+            #print('result:')
+            print(str(packet.payload.payload.payload.load)[2:-3])
+    #elif packet.haslayer(TCP) and packet[TCP].sport == SRC_PORT:
+        #print('sending:')
+        #packet[TCP].show()
+        
 
 # Function to start the packet sniffing
 def start_sniffing():    
