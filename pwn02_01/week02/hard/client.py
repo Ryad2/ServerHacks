@@ -26,15 +26,15 @@ def try_password():
         sf.write('root,Password' + str(i).zfill(2) + '\n'); # enter password
         sf.flush()
         line = sf.readline().strip(); # read result
-        print("challenge text:",line)
+        #print("challenge text:",line)
         line = sf.readline().strip()
-        print("to eval:", line)
+        #print("to eval:", line)
         result = str(eval(line))
-        print("result:", result)
+        #print("result:", result)
         sf.write(result + '\n')
         sf.flush()
         line = sf.readline()
-        print("connection:", line)
+        #print("connection:", line)
     
 
 
