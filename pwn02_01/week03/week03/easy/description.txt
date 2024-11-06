@@ -1,0 +1,62 @@
+Enter your team number please:
+98
+In this challenge, you need to answer a question about firewalls.
+
+The Topology
+
+Alice -
+       `-- eth0:firewall:eth1 --- INET
+Bob ---´
+
+Alice = 192.168.0.92
+Bob = 192.168.0.148
+
+firewall:eth0 = 192.168.0.213
+firewall:eth1 = 131.159.12.91
+
+The Ruleset
+
+Rule | Iface | SrcIp          | DstIp          | Protocol | SrcPort | DstPort | State | Action
+ A   |  *    | *              | *              | *        | *       | *       | EST   | Accept
+ B   |  eth1 | 192.168.0.0/16 | *              | *        | *       | *       | *     | Drop
+ C   |  eth1 | *              | 131.159.12.91 | *        | *       | *       | *     | Drop
+ D   |  eth1 | 131.159.12.91 | *              | *        | *       | *       | *     | Drop
+ E   |  eth0 | 192.168.0.0/24 | *              | tcp      | >1023   | 22      | NEW   | Accept
+ F   |  eth0 | 192.168.0.0/24 | 8.8.8.8        | udp      | >1023   | 53      | NEW   | Accept
+ G   |  eth0 | 192.168.0.0/24 | *              | tcp      | >1023   | 80,443  | NEW   | Accept
+ H   |  eth0 | 192.168.0.92    | *              | tcp      | >1023   | 25,993  | NEW   | Accept
+ I   |  eth1 | *              | 192.168.0.148    | tcp      | >1023   | 23      | NEW   | Accept
+ J   |  *    | *              | *              | *        | *       | *       | *     | Drop
+
+
+The Question
+
+The firewall is tracking states with a list of IP-5 tuples.
+It always stores the initiating packet and allows answer packets.
+That means, the IP-5 tuple is only stored once, but it matches traffic in both directions.
+
+For new connections, the list is appended (new IP-5 tuple added to the back).
+
+The firewall starts with the following state:
+
+[("192.168.0.92", "8.8.8.8", "udp", 20474, 53), ("192.168.0.92", "31.192.117.132", "tcp", 49722, 80)]
+
+You should first reproduce how this state might have been established:
+1) Alice did a DNS lookup (using the google DNS server) for a certain domain.
+   She got the answer 31.192.117.132.
+2) Alice is surfing this website (probably seven clicks and streaming a video for 8 minutes).
+
+Your task is to calculate the final state after the following packets have been
+sent through the firewall:
+
+* A tcp packet from the internet from 123.123.123.123 to Alice, src port 20474, dst port 22.
+* A late, duplicate DNS reply for alice from 8.8.8.8, udp, src port 53, dst port 20474.
+* Alice trying to establish a telnet connection (tcp, port 23) with source port 6666 to 145.145.99.99.
+* Carl (61.61.61.61) trying to establish a telnet connection (using src port 55553)  with Bob.
+* Bob, spoofing Alice's IP, sending out a smtp packet (using src port 46465) to 54.54.54.54.
+* Bob, spoofing Alice's IP, sending out a telnet packet (using src port 38453) to 8.8.8.8.
+* Bob, sending out a telnet packet (using src port 23, dst port 55553) to 61.61.61.61.
+* Alice getting more HTTP packets from the website she visited initially.
+
+
+Please put the solution in one line. We use ast.literal_eval to parse it.

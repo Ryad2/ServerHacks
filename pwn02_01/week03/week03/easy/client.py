@@ -1,8 +1,8 @@
 import socket
 
 # Fill in the right target here
-HOST = 'this.is.not.a.valid.domain'  # TODO
-PORT = 0  # TODO
+HOST = 'netsec.net.in.tum.de'  # TODO
+PORT = 20103  # TODO
 
 
 def get_flag():
@@ -12,6 +12,7 @@ def get_flag():
     sf = s.makefile('rw')  # we use a file abstraction for the sockets
 
     message1 = sf.readline().rstrip('\n')
+    print (message1)
     # TODO
 
     sf.close()
