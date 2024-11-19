@@ -17,7 +17,7 @@ def calc_cbc_mac(message: bytes, iv: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_CBC, iv)
     message = pkcs7(message)
     last_block = cipher.encrypt(message)[-16:]
-    return last_block    
+    return last_block
 
 
 def xor(self, other):
@@ -27,6 +27,7 @@ def pad(self, n):
     return self + (b'0' * (n - len(self)))
 
 def H(sf, m, iv, mac=None):
+    print('Sent', 'm:', m, 'iv:', iv, 'mac:', mac)
     msg_enc = base64.b64encode(m).decode()
     iv_enc = base64.b64encode(iv).decode()
     if mac:
@@ -36,14 +37,13 @@ def H(sf, m, iv, mac=None):
         mac_enc = base64.b64encode(b'0' * 16).decode()
     
     request = f'{msg_enc};{iv_enc};{mac_enc}\n'
-    print(request.rstrip('\n'))
     sf.write(request)
     sf.flush()
     message = sf.readline().rstrip('\n')
-    print(message)
     if mac == None:
         mac = message.lstrip(MAC_FAIL_PREFIX)[:32]
         mac = bytes.fromhex(mac)
+        print('Got:', mac)
         return mac
     return message
 
@@ -69,12 +69,14 @@ def get_flag():
 
     h = {}
     print('request 1')
+    print(xor(a, b))
     h[x] = H(sf, iv=a, m=b)
 
     # xor(h[x], m2) = xor(c, b)
-    c = xor(h[x], pad(m2, 16))
+    c = xor(xor(h[x], pad(m2, 16)), b)
 
     print('request 2')
+    print(xor(xor(c, b), h[x]))
     z = H(sf, iv=c, m=b)
 
     print('final request')
