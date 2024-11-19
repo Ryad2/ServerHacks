@@ -23,35 +23,37 @@ TEST_HASHES = ['60472ad202dce92d5b5b1ade3f1863136e99c6368f72024c719f4997eecd0e31
 			   'f6b9e69ad9e83fc00338919ea3e1a990f6a6ee9cc2e76dad48657d1c92aa0bf975e513f5ce82e707fba68ce2de155d660bca6fdf2deb182f1fce0f045da38ed2',
 			   '850187bb771ad86e8c73e801aaf7530afb4c5210d5040a844cd1666e442ca776d7e7da884075f847c9ffff60102542364253970a6ed0a225c0bd4f1cfd00a4d9']
 
-def get_secret(sf):
-	message = sf.readline().rstrip('\n')
-	print(message)
-	if ENTER_ACTION != message:
-		print('did not receive action request')
-	sf.write(GET_SECRET + '\n')
-
 def enter_password(sf, passwords):
+	sf.flush()
 	message = sf.readline().rstrip('\n')
-	print(message)
+	sf.flush()
+	#print(message)
 	if ENTER_USERNAME != message:
 		print('did not receive username request')
-	sf.write(USERNAME + '\n')
-
+	sf.write(USERNAME+'\n')
+	sf.flush()
 	message = sf.readline().rstrip('\n')
-	print(message)
+	sf.flush()
+	#print(message)
 	if ENTER_PASSWORD != message:
-		print('did not receive password request')	
-	password = passwords.join(';')
-	sf.write(password + '\n')
+		print('did not receive password request')
+	sf.write(passwords+'\n')
+	sf.flush()
+	message = sf.readline().rstrip('\n')
+	sf.flush()
+	#print(message)
+	if LOGIN_SYNTAX_FAIL == message:
+		print('invalid syntax')
+	return message
 
 def get_hashes(sf):
-	enter_password(sf, 'a')
-	message = sf.readline().rstrip('\n')
-	print(message)
+	message = enter_password(sf, 'a')
 	if message.startswith(LOGIN_INVALID_PASSWORD_START):
 		hashes = message.lstrip(LOGIN_INVALID_PASSWORD_START) # remove message from start
-		hashes = hashes.split(';')
+		hashes = [h.strip('\'') for h in hashes.lstrip('[').rstrip(']').split(', ')]
 		return hashes
+	else:
+		print('fail:', message)
 
 
 def force_hashes_lookup(hashes):
@@ -98,17 +100,19 @@ def get_flag():
 	s.connect((HOST, PORT))
 	sf = s.makefile('rw')
 
-	get_secret(sf)
-	hashes = [h.unhex() for h in get_hashes(sf)]
-	print(hashes)
-	passwords = ';'.join(force_hashes_lookup(hashes))
-	print(passwords)
-	enter_password(sf, passwords)
-	message = sf.readline().rstrip('\n')
-	print(message)
-	if LOGIN_SYNTAX_FAIL == message:
-		print('invalid syntax')
-	return message
+	sf.flush()
+	message = sf.readline()
+	#print(message)
+	sf.write(GET_SECRET+'\n')
+	sf.flush()
+	hashes = get_hashes(sf)
+	#print(hashes)
+	passwords = force_hashes_lookup(hashes)
+	passwords = ';'.join(passwords)
+	#print(passwords)
+	flag = enter_password(sf, passwords)
+	flag = flag.lstrip('Secret: ')
+	print(flag)
 
 	sf.close()
 	s.close()	
