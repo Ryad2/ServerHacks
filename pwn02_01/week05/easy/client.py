@@ -7,7 +7,7 @@ from hashlib import sha256
 
 import bitarray
 from Crypto.Cipher import AES
-from Crypto.Hash import CMAC
+#from Crypto.Hash import CMAC
 #from cryptography.hazmat.primitives.ciphers import algorithms
 #from cryptography.hazmat.primitives.cmac import CMAC
 
@@ -32,14 +32,14 @@ def calc_cbc_mac(message: bytes, iv: bytes, key: bytes) -> bytes:
     return iv
 
 
-def calc_cbc_mac_reference(message: bytes, iv: bytes, key: bytes) -> bytes:
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    message = pkcs7(message)
-    last_block = cipher.encrypt(message)[-16:]
-    return last_block
+#def calc_cbc_mac_reference(message: bytes, iv: bytes, key: bytes) -> bytes:
+#    cipher = AES.new(key, AES.MODE_CBC, iv)
+#    message = pkcs7(message)
+#    last_block = cipher.encrypt(message)[-16:]
+#    return last_block
 
-def calc_hmac_reference(message: bytes, key: bytes) -> bytes:
-    return hmac.new(key, message, digestmod='sha256').digest()
+#def calc_hmac_reference(message: bytes, key: bytes) -> bytes:
+#    return hmac.new(key, message, digestmod='sha256').digest()
 
 def calc_hmac(message: bytes, key: bytes) -> bytes:
     localKey = bytes(key<<128)
@@ -81,10 +81,10 @@ def calc_cmac(message: bytes, key: bytes) -> bytes:
             c = cipher.encrypt(c ^ mq)[-16:]
     return c
 
-def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
-    c = CMAC.new(key, ciphermod=AES)
-    c.update(message)
-    return c.digest()
+#def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
+#    c = CMAC.new(key, ciphermod=AES)
+#    c.update(message)
+#    return c.digest()
 
 
 
