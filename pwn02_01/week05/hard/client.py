@@ -41,8 +41,11 @@ def H(sf, m, iv, mac=None):
     sf.flush()
     message = sf.readline().rstrip('\n')
     if mac == None:
-        mac = message.lstrip(MAC_FAIL_PREFIX)[:32]
-        mac = bytes.fromhex(mac)
+        mac = message.replace(MAC_FAIL_PREFIX, '')[:32]
+        try:
+            mac = bytes.fromhex(mac)
+        except:
+            print('not hex:', mac, 'from', message)
         print('Got:', mac)
         return mac
     return message
@@ -72,15 +75,25 @@ def get_flag():
     print(xor(a, b))
     h[x] = H(sf, iv=a, m=b)
 
+    # option A: z by separate request
     # xor(h[x], m2) = xor(c, b)
     c = xor(xor(h[x], pad(m2, 16)), b)
 
     print('request 2')
     print(xor(xor(c, b), h[x]))
-    z = H(sf, iv=c, m=b)
+    z1 = H(sf, iv=c, m=b)
+
+    # option B: z by message extention
+    # xor(h[x], m2)
+    d = xor(h[x], m2)
+
+    print('request 2\'')
+    z2 = H(sf, iv=a, m=b + d)
+    # end option B
 
     print('final request')
-    print(H(sf, m=m, iv=iv, mac=z))
+    print(H(sf, m=m, iv=iv, mac=z1))
+    print(H(sf, m=m, iv=iv, mac=z2))
 
     sf.close()
     s.close()
