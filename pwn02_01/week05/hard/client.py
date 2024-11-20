@@ -27,7 +27,7 @@ def pad(self, n):
     return self + (b'0' * (n - len(self)))
 
 def H(sf, msg, iv, mac=None):
-    print('Sent', 'msg:', msg, 'iv:', iv, 'mac:', mac)
+    #print('Sent', 'msg:', msg, 'iv:', iv, 'mac:', mac)
     msg_enc = base64.b64encode(msg).decode()
     iv_enc = base64.b64encode(iv).decode()
     if mac:
@@ -46,7 +46,7 @@ def H(sf, msg, iv, mac=None):
             mac = bytes.fromhex(mac)
         except:
             print('not hex:', mac, 'from', message)
-        print('Got:', mac)
+        #print('Got:', mac)
         return mac
     return message
 
@@ -71,13 +71,13 @@ def get_flag():
     iv = b'\0' * 16
 
     h = {}
-    print('request 1')
+    #print('request 1')
     # this request is like asking for m, but uses n
-    print('b ^n1=', xor(b, n1))
-    print('iv^m1=', xor(iv, m1))
+    #print('b ^n1=', xor(b, n1))
+    #print('iv^m1=', xor(iv, m1))
     mac = H(sf, iv=b, msg=n)
 
-    print('final request')
+    #print('final request')
     print(H(sf, msg=m, iv=iv, mac=mac))
 
     sf.close()

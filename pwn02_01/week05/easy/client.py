@@ -1,5 +1,5 @@
 import hashlib
-import hmac
+#import hmac
 import socket
 import base64
 import itertools
