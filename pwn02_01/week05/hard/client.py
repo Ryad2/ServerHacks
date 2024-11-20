@@ -26,9 +26,9 @@ def xor(self, other):
 def pad(self, n):
     return self + (b'0' * (n - len(self)))
 
-def H(sf, m, iv, mac=None):
-    print('Sent', 'm:', m, 'iv:', iv, 'mac:', mac)
-    msg_enc = base64.b64encode(m).decode()
+def H(sf, msg, iv, mac=None):
+    print('Sent', 'msg:', msg, 'iv:', iv, 'mac:', mac)
+    msg_enc = base64.b64encode(msg).decode()
     iv_enc = base64.b64encode(iv).decode()
     if mac:
         mac_enc = base64.b64encode(mac).decode()
@@ -58,42 +58,27 @@ def get_flag():
 
     # final request message:
     #      0123456789abcdef
+    n1 = b'type=funfact&num'
     m1 = b'type=secrets&num'
     m2 = b'ber=1337'
     m = m1 + m2
+    n = n1 + m2
 
-    # xor(iv, m1) = xor(a, b) = x
-    # b must be of length 16, be split by '&' into 2 (or more) parts containing (at least) one '='
-    #     0123456789abcdef
-    b = b'0000=000&000=000'
-    a = xor(m1, b)
-    x = xor(a, b)
-    iv = xor(x, m1)
+    # message must be of length 16, be split by '&' into 2 (or more) parts containing (at least) one '='
+
+    # b ^ n1 = m1 = 0 ^ m1 = iv ^ m1
+    b = xor(n1, m1)
+    iv = b'\0' * 16
 
     h = {}
     print('request 1')
-    print(xor(a, b))
-    h[x] = H(sf, iv=a, m=b)
-
-    # option A: z by separate request
-    # xor(h[x], m2) = xor(c, b)
-    c = xor(xor(h[x], pad(m2, 16)), b)
-
-    print('request 2')
-    print(xor(xor(c, b), h[x]))
-    z1 = H(sf, iv=c, m=b)
-
-    # option B: z by message extention
-    # xor(h[x], m2)
-    d = xor(h[x], m2)
-
-    print('request 2\'')
-    z2 = H(sf, iv=a, m=b + d)
-    # end option B
+    # this request is like asking for m, but uses n
+    print('b ^n1=', xor(b, n1))
+    print('iv^m1=', xor(iv, m1))
+    mac = H(sf, iv=b, msg=n)
 
     print('final request')
-    print(H(sf, m=m, iv=iv, mac=z1))
-    print(H(sf, m=m, iv=iv, mac=z2))
+    print(H(sf, msg=m, iv=iv, mac=mac))
 
     sf.close()
     s.close()
