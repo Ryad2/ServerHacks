@@ -17,15 +17,15 @@ KEY = b"1337133713371337"
 IV = b'\x00' * 16
 
 
-def xor(self, other):
+def xor(self: bytes, other: bytes) -> bytes:
     return bytes(a ^ b for a, b in zip(self, other))
 
 # pad to lenght by apending 0
-def pad_back(self, n):
+def pad_back(self: bytes, n: int) -> bytes:
     return self + (b'\0' * (n - len(self)))
 
 # pad to lenght by prepending 0
-def pad_front(self, n):
+def pad_front(self: bytes, n: int) -> bytes:
     return (b'\0' * (n - len(self))) + self
 
 def pkcs7(message: bytes, block_size: int = 16) -> bytes:
@@ -65,7 +65,7 @@ def calc_hmac(message: bytes, key: bytes) -> bytes:
 
 # inspiration from wikipedia
 def calc_cmac(message: bytes, key: bytes) -> bytes:
-    AES_BYTE_LEN = 32
+    AES_BYTE_LEN = 16
     AES_BIT_LEN = AES_BYTE_LEN * 8
 
     # pad key with 0
@@ -74,17 +74,23 @@ def calc_cmac(message: bytes, key: bytes) -> bytes:
     # Input bytes object (32 bytes)
 
     # create aes object
-    cipher = AES.new(key, AES.MODE_CBC, bytes(16))
+    cipher = AES.new(key, AES.MODE_CBC, IV)
     #message = pkcs7(message)
 
-    k0 = cipher.encrypt(key)
+    k0 = cipher.encrypt(IV)
     b_k0 = int.from_bytes(k0, byteorder="big")
 
     def msb(n):
-        return n & (1 << 31) != 0
+        return n & (1 << (AES_BIT_LEN - 1)) != 0
+    a = msb(0)
+    b = msb(-1)
 
-    # 0x425
-    b_constant = 0x425 # 0b010000100101
+    if AES_BIT_LEN == 64:
+        b_constant = 0x1B
+    if AES_BIT_LEN == 128:
+        b_constant = 0x87
+    if AES_BIT_LEN == 256:
+        b_constant = 0x425 # 0b010000100101
 
     if msb(b_k0) == 0:
         b_k1 = (b_k0 << 1)
@@ -101,14 +107,16 @@ def calc_cmac(message: bytes, key: bytes) -> bytes:
     for m in itertools.batched(message, AES_BYTE_LEN):
         b_m = int.from_bytes(m, byteorder="big")
         if len(m) == AES_BYTE_LEN:
-            #mq = k1 ^ m
+            #else case; b_mq = b_k1 ^ m
             c = cipher.encrypt((b_c ^ b_m).to_bytes(AES_BYTE_LEN, byteorder="big"))
             b_c = int.from_bytes(c, byteorder="big")
         else:
-            b_mq = ((1<<33)-1) & ((b_k2 << (1 + len(m) * 8)) | (1 << (len(m) * 8)) | b_m)
-            b_mq = int.from_bytes(b_mq.to_bytes(AES_BYTE_LEN, byteorder="big")[-32:], byteorder="big")
+            moffset = (AES_BYTE_LEN - len(m)) * 8
+            b_mq = b_k2 ^ (b_m << moffset | 1 << (moffset - 1))
+            b_mq = int.from_bytes(b_mq.to_bytes(AES_BYTE_LEN, byteorder="big")[-AES_BYTE_LEN:], byteorder="big")
             c = cipher.encrypt((b_c ^ b_mq).to_bytes(AES_BYTE_LEN, byteorder="big"))
             b_c = int.from_bytes(c, byteorder="big")
+    # no need to take n bits from <n bit number
     return c
 
 #def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
