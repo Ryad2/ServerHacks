@@ -5,7 +5,6 @@ import base64
 import itertools
 from hashlib import sha256
 
-import bitarray
 from Crypto.Cipher import AES
 #from Crypto.Hash import CMAC
 #from cryptography.hazmat.primitives.ciphers import algorithms
@@ -28,16 +27,6 @@ def pad_back(self, n):
 # pad to lenght by prepending 0
 def pad_front(self, n):
     return (b'\0' * (n - len(self))) + self
-
-# pad to lenght by apending 0 (bitarray)
-def b_pad_back(self, n):
-    t = bitarray.bitarray(n - len(self))
-    return self + t
-
-# pad to lenght by prepending 0 (bitarray)
-def b_pad_front(self, n):
-    t = bitarray.bitarray(n - len(self))
-    return t + self
 
 def pkcs7(message: bytes, block_size: int = 16) -> bytes:
     gap_size = block_size - (len(message) % block_size)
@@ -77,59 +66,48 @@ def calc_hmac(message: bytes, key: bytes) -> bytes:
 def calc_cmac(message: bytes, key: bytes) -> bytes:
     AES_BYTE_LEN = 32
     AES_BIT_LEN = AES_BYTE_LEN * 8
-    def b_normalize(b):
-        return b_pad_front(b[-32:], AES_BIT_LEN)
-    # b_ prefix for bitarrays
 
     # pad key with 0
-    b_key = bitarray.bitarray()
-    b_key.frombytes(key)
-    b_key = b_normalize(b_key)
-    key = b_key.tobytes()
+    b_key = int.from_bytes(key, byteorder="big")
+    key = b_key.to_bytes(AES_BYTE_LEN, byteorder="big")
+    # Input bytes object (32 bytes)
 
     # create aes object
     cipher = AES.new(key, AES.MODE_CBC, bytes(16))
     #message = pkcs7(message)
 
     k0 = cipher.encrypt(key)
-    b_k0 = bitarray.bitarray()
-    b_k0.frombytes(k0)
-    b_k0 = b_normalize(b_k0)
+    b_k0 = int.from_bytes(k0, byteorder="big")
 
     def msb(n):
-        return n[0]
+        return n & (1 << 31) != 0
 
     # 0x425
-    b_constant = b_normalize(bitarray.bitarray('010000100101'))
+    b_constant = 0x425 # 0b010000100101
 
     if msb(b_k0) == 0:
-        b_k1 = b_normalize(b_k0 << 1)
+        b_k1 = (b_k0 << 1)
     else:
-        b_k1 = b_normalize(b_k0 << 1) ^ b_constant
+        b_k1 = (b_k0 << 1) ^ b_constant
 
     if msb(b_k1) == 0:
-        b_k2 = b_normalize(b_k1 << 1)
+        b_k2 = (b_k1 << 1)
     else:
-        b_k2 = b_normalize(b_k1 << 1) ^ b_constant
+        b_k2 = (b_k1 << 1) ^ b_constant
 
-    b_c = bitarray.bitarray(AES_BIT_LEN)
+    b_c = 0
 
-    b_message = bitarray.bitarray()
-    b_message.frombytes(message)
-
-    for m in itertools.batched(b_message, AES_BIT_LEN):
-        b_m = bitarray.bitarray(m)
-        if len(b_m) == AES_BIT_LEN:
+    for m in itertools.batched(message, AES_BYTE_LEN):
+        b_m = int.from_bytes(m, byteorder="big")
+        if len(m) == AES_BYTE_LEN:
             #mq = k1 ^ m
-            c = cipher.encrypt((b_c ^ b_m).tobytes())
-            b_c = bitarray.bitarray()
-            b_c.frombytes(c)
+            c = cipher.encrypt((b_c ^ b_m).to_bytes(AES_BYTE_LEN, byteorder="big"))
+            b_c = int.from_bytes(c, byteorder="big")
         else:
-            b_one = bitarray.bitarray('1')
-            b_mq = b_normalize(b_k2 + b_one + b_m)
-            c = cipher.encrypt((b_c ^ b_mq).tobytes())
-            b_c = bitarray.bitarray()
-            b_c.frombytes(c)
+            b_mq = ((1<<33)-1) & ((b_k2 << (1 + len(m) * 8)) | (1 << (len(m) * 8)) | b_m)
+            b_mq = int.from_bytes(b_mq.to_bytes(AES_BYTE_LEN, byteorder="big")[-32:], byteorder="big")
+            c = cipher.encrypt((b_c ^ b_mq).to_bytes(AES_BYTE_LEN, byteorder="big"))
+            b_c = int.from_bytes(c, byteorder="big")
     return c
 
 #def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
