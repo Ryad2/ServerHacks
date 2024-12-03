@@ -51,7 +51,7 @@ def calc_cbc_mac(message: bytes, iv: bytes, key: bytes) -> bytes:
 #    return hmac.new(key, message, digestmod='sha256').digest()
 
 def calc_hmac(message: bytes, key: bytes) -> bytes:
-    localKey = pad_back(key, 32)
+    localKey = pad_back(key, 64)
     
     ipad = bytes((x ^ 0x36) for x in localKey)
     opad = bytes((x ^ 0x5C) for x in localKey)
