@@ -34,18 +34,21 @@ def pkcs7(message: bytes, block_size: int = 16) -> bytes:
 
 
 def calc_cbc_mac(message: bytes, iv: bytes, key: bytes) -> bytes:
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    message = pkcs7(message)
-    for m in itertools.batched(message, 16):
-        iv = cipher.encrypt(xor(m, iv))[-16:]
-    return iv
+#    cipher = AES.new(key, AES.MODE_CBC, iv)
+#    message = pkcs7(message)
+#    for m in itertools.batched(message, 16):
+#        x = xor(m, iv)
+#        y = xor(m, x)
+#        iv = cipher.encrypt(x)
+#        iv = iv[-16:]
+#    return iv[-16:]
 
 
 #def calc_cbc_mac_reference(message: bytes, iv: bytes, key: bytes) -> bytes:
-#    cipher = AES.new(key, AES.MODE_CBC, iv)
-#    message = pkcs7(message)
-#    last_block = cipher.encrypt(message)[-16:]
-#    return last_block
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    message = pkcs7(message)
+    last_block = cipher.encrypt(message)[-16:]
+    return last_block
 
 #def calc_hmac_reference(message: bytes, key: bytes) -> bytes:
 #    return hmac.new(key, message, digestmod='sha256').digest()
