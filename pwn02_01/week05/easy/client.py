@@ -29,6 +29,16 @@ def pad_back(self, n):
 def pad_front(self, n):
     return (b'\0' * (n - len(self))) + self
 
+# pad to lenght by apending 0 (bitarray)
+def b_pad_back(self, n):
+    t = bitarray.bitarray(n - len(self))
+    return self + t
+
+# pad to lenght by prepending 0 (bitarray)
+def b_pad_front(self, n):
+    t = bitarray.bitarray(n - len(self))
+    return t + self
+
 def pkcs7(message: bytes, block_size: int = 16) -> bytes:
     gap_size = block_size - (len(message) % block_size)
     return message + bytes([gap_size] * gap_size)
@@ -65,35 +75,61 @@ def calc_hmac(message: bytes, key: bytes) -> bytes:
 
 # inspiration from wikipedia
 def calc_cmac(message: bytes, key: bytes) -> bytes:
-    AES_LEN = 32
-    key = pad_front(key, AES_LEN)
+    AES_BYTE_LEN = 32
+    AES_BIT_LEN = AES_BYTE_LEN * 8
+    def b_normalize(b):
+        return b_pad_front(b[-32:], AES_BIT_LEN)
+    # b_ prefix for bitarrays
+
+    # pad key with 0
+    b_key = bitarray.bitarray()
+    b_key.frombytes(key)
+    b_key = b_normalize(b_key)
+    key = b_key.tobytes()
+
+    # create aes object
     cipher = AES.new(key, AES.MODE_CBC, bytes(16))
     #message = pkcs7(message)
-    k0 = cipher.encrypt(key).to_int()
+
+    k0 = cipher.encrypt(key)
+    b_k0 = bitarray.bitarray()
+    b_k0.frombytes(k0)
+    b_k0 = b_normalize(b_k0)
 
     def msb(n):
-        b = bitarray.bitarray(AES_LEN)
-        b.frombytes(n)
-        return b[0]
+        return n[0]
 
-    if msb(k0) == 0:
-        k1 = k0 << 1
+    # 0x425
+    b_constant = b_normalize(bitarray.bitarray('010000100101'))
+
+    if msb(b_k0) == 0:
+        b_k1 = b_normalize(b_k0 << 1)
     else:
-        k1 = xor((k0 << 1).to_bytes(length=AES_LEN), (0x425).to_bytes(length=AES_LEN))
+        b_k1 = b_normalize(b_k0 << 1) ^ b_constant
 
-    if msb(k1) == 0:
-        k2 = k1 << 1
+    if msb(b_k1) == 0:
+        b_k2 = b_normalize(b_k1 << 1)
     else:
-        k2 = xor((k1 << 1).to_bytes(length=AES_LEN), (0x425).to_bytes(length=AES_LEN))
+        b_k2 = b_normalize(b_k1 << 1) ^ b_constant
 
-    c = bytes(AES_LEN)
-    for m in itertools.batched(bitarray.bitarray(message), AES_LEN):
-        if len(m) == AES_LEN:
+    b_c = bitarray.bitarray(AES_BIT_LEN)
+
+    b_message = bitarray.bitarray()
+    b_message.frombytes(message)
+
+    for m in itertools.batched(b_message, AES_BIT_LEN):
+        b_m = bitarray.bitarray(m)
+        if len(b_m) == AES_BIT_LEN:
             #mq = k1 ^ m
-            c = cipher.encrypt(xor(c, m))
+            c = cipher.encrypt((b_c ^ b_m).tobytes())
+            b_c = bitarray.bitarray()
+            b_c.frombytes(c)
         else:
-            mq = pad_front((k2 + (1).to_bytes(length=1) + m), AES_LEN)
-            c = cipher.encrypt(xor(c, mq))
+            b_one = bitarray.bitarray('1')
+            b_mq = b_normalize(b_k2 + b_one + b_m)
+            c = cipher.encrypt((b_c ^ b_mq).tobytes())
+            b_c = bitarray.bitarray()
+            b_c.frombytes(c)
     return c
 
 #def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
