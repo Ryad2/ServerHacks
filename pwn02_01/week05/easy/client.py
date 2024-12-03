@@ -34,17 +34,17 @@ def pkcs7(message: bytes, block_size: int = 16) -> bytes:
 
 
 def calc_cbc_mac(message: bytes, iv: bytes, key: bytes) -> bytes:
-#    cipher = AES.new(key, AES.MODE_CBC, iv)
-#    message = pkcs7(message)
-#    for m in itertools.batched(message, 16):
-#        x = xor(m, iv)
-#        y = xor(m, x)
-#        iv = cipher.encrypt(x)
-#        iv = iv[-16:]
-#    return iv[-16:]
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    message = pkcs7(message)
+    for m in itertools.batched(message, 16):
+        x = xor(m, iv)
+        y = xor(m, x)
+        iv = cipher.encrypt(x)
+        iv = iv[-16:]
+    return iv[-16:]
 
-
-#def calc_cbc_mac_reference(message: bytes, iv: bytes, key: bytes) -> bytes:
+# Using this instead is also allowed?
+def calc_cbc_mac_reference(message: bytes, iv: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_CBC, iv)
     message = pkcs7(message)
     last_block = cipher.encrypt(message)[-16:]
