@@ -22,11 +22,11 @@ def xor(self: bytes, other: bytes) -> bytes:
 
 # pad to lenght by apending 0
 def pad_back(self: bytes, n: int) -> bytes:
-    return self + (b'\0' * (n - len(self)))
+    return self + (b'\x00' * (n - len(self)))
 
 # pad to lenght by prepending 0
 def pad_front(self: bytes, n: int) -> bytes:
-    return (b'\0' * (n - len(self))) + self
+    return (b'\x00' * (n - len(self))) + self
 
 def pkcs7(message: bytes, block_size: int = 16) -> bytes:
     gap_size = block_size - (len(message) % block_size)
@@ -108,19 +108,18 @@ def calc_cmac(message: bytes, key: bytes) -> bytes:
     b_c = 0
 
     for m in itertools.batched(message, AES_BYTE_LEN):
+        m = bytes(m)
         b_m = int.from_bytes(m, byteorder="big")
         if len(m) == AES_BYTE_LEN:
             #else case; b_mq = b_k1 ^ m
             c = cipher.encrypt((b_c ^ b_m).to_bytes(AES_BYTE_LEN, byteorder="big"))
             b_c = int.from_bytes(c, byteorder="big")
         else:
-            moffset = (AES_BYTE_LEN - len(m)) * 8
-            b_mq = b_k2 ^ (b_m << moffset | 1 << (moffset - 1))
-            b_mq = int.from_bytes(b_mq.to_bytes(AES_BYTE_LEN, byteorder="big")[-AES_BYTE_LEN:], byteorder="big")
+            mq = m + b'\x80' + (b'\x00' * (AES_BYTE_LEN - len(m) - 1))
+            b_mq = int.from_bytes(mq, byteorder="big")
             c = cipher.encrypt((b_c ^ b_mq).to_bytes(AES_BYTE_LEN, byteorder="big"))
             b_c = int.from_bytes(c, byteorder="big")
-    # no need to take n bits from <n bit number
-    return c
+    return c[:AES_BYTE_LEN]
 
 #def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
 #    c = CMAC.new(key, ciphermod=AES)
@@ -135,10 +134,13 @@ def get_flag():
     sf = s.makefile('rw')  # we use a file abstraction for the sockets
 
     message1 = sf.readline().rstrip('\n')
-    print(message1)
+    #print(message1)
     message1 = bytes.fromhex(message1)
+    #print("h",calc_hmac(message1,KEY),calc_hmac_reference(message1,KEY)) # OK
+    #print("cbc",calc_cbc_mac(message1,IV,KEY),calc_cbc_mac_reference(message1,IV,KEY))
+    #print("c",calc_cmac(message1,KEY),calc_cmac_reference(message1,KEY))
     answer = f'{base64.b64encode(calc_hmac(message1, KEY))};{base64.b64encode(calc_cbc_mac(message1, IV, KEY))};{base64.b64encode(calc_cmac(message1, KEY))}'
-    print(answer)
+    #print(answer)
     sf.write(f'{answer}\n')
     sf.flush()
     print(sf.readline().rstrip('\n'))
