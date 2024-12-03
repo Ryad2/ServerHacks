@@ -10,6 +10,19 @@ from Crypto.Cipher import AES
 #from cryptography.hazmat.primitives.ciphers import algorithms
 #from cryptography.hazmat.primitives.cmac import CMAC
 
+
+########
+# Please update python
+# Allow bitarray library
+# Allow itertools.batched
+# Allow bitwise ops/bitshift on bytes/bytearray (Python 3.12+)
+# This has become very painful because there is no such thing on the server
+# Without those tools, c has better bitwise support and is easier to write and read (except for long long long ints)
+# Thank you!
+########
+
+
+
 # Fill in the right target here
 HOST = 'netsec.net.in.tum.de'  # TODO
 PORT = 20105  # TODO
@@ -28,6 +41,21 @@ def pad_back(self: bytes, n: int) -> bytes:
 def pad_front(self: bytes, n: int) -> bytes:
     return (b'\x00' * (n - len(self))) + self
 
+# from https://stackoverflow.com/a/8998040
+def itertools_batched(iterable, n):
+    "Batch data into iterators of length n. The last batch may be shorter."
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        raise ValueError('n must be at least one')
+    it = iter(iterable)
+    while True:
+        chunk_it = itertools.islice(it, n)
+        try:
+            first_el = next(chunk_it)
+        except StopIteration:
+            return
+        yield itertools.chain((first_el,), chunk_it)
+
 def pkcs7(message: bytes, block_size: int = 16) -> bytes:
     gap_size = block_size - (len(message) % block_size)
     return message + bytes([gap_size] * gap_size)
@@ -36,7 +64,7 @@ def pkcs7(message: bytes, block_size: int = 16) -> bytes:
 def calc_cbc_mac(message: bytes, iv: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_CBC, iv)
     message = pkcs7(message)
-    for m in itertools.batched(message, 16):
+    for m in itertools_batched(message, 16):
         x = xor(m, iv)
         y = xor(m, x)
         iv = cipher.encrypt(x)
@@ -107,7 +135,7 @@ def calc_cmac(message: bytes, key: bytes) -> bytes:
 
     b_c = 0
 
-    for m in itertools.batched(message, AES_BYTE_LEN):
+    for m in itertools_batched(message, AES_BYTE_LEN):
         m = bytes(m)
         b_m = int.from_bytes(m, byteorder="big")
         if len(m) == AES_BYTE_LEN:
