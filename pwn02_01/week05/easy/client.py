@@ -1,5 +1,4 @@
-import hashlib
-#import hmac
+import hmac
 import socket
 import base64
 import itertools
@@ -7,16 +6,17 @@ from hashlib import sha256
 
 import bitarray
 from Crypto.Cipher import AES
-#from Crypto.Hash import CMAC
-#from cryptography.hazmat.primitives.ciphers import algorithms
-#from cryptography.hazmat.primitives.cmac import CMAC
+from Crypto.Hash import CMAC
+
+# from cryptography.hazmat.primitives.ciphers import algorithms
+# from cryptography.hazmat.primitives.cmac import CMAC
 
 # Fill in the right target here
 HOST = 'netsec.net.in.tum.de'  # TODO
 PORT = 20105  # TODO
-KEY = b"1337_1337_1337_1337"
-IV = b'\x00' * 16
+KEY = b'1337133713371337'
 
+IV = b'\x00' * 16
 
 
 def pkcs7(message: bytes, block_size: int = 16) -> bytes:
@@ -32,17 +32,19 @@ def calc_cbc_mac(message: bytes, iv: bytes, key: bytes) -> bytes:
     return iv
 
 
-#def calc_cbc_mac_reference(message: bytes, iv: bytes, key: bytes) -> bytes:
-#    cipher = AES.new(key, AES.MODE_CBC, iv)
-#    message = pkcs7(message)
-#    last_block = cipher.encrypt(message)[-16:]
-#    return last_block
+def calc_cbc_mac_reference(message: bytes, iv: bytes, key: bytes) -> bytes:
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    message = pkcs7(message)
+    last_block = cipher.encrypt(message)[-16:]
+    return last_block
 
-#def calc_hmac_reference(message: bytes, key: bytes) -> bytes:
-#    return hmac.new(key, message, digestmod='sha256').digest()
+
+def calc_hmac_reference(message: bytes, key: bytes) -> bytes:
+    return hmac.new(key, message, digestmod='sha256').digest()
+
 
 def calc_hmac(message: bytes, key: bytes) -> bytes:
-    localKey = bytes(key<<128)
+    localKey = bytes(key << 128)
     ipad = bytes((x ^ 0x36) for x in localKey)
     opad = bytes((x ^ 0x5C) for x in localKey)
     innerHash = sha256(ipad + message).digest()
@@ -50,12 +52,10 @@ def calc_hmac(message: bytes, key: bytes) -> bytes:
     return outerHash
 
 
-
-
 # inspiration from wikipedia
 def calc_cmac(message: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_CBC, 0)
-    #message = pkcs7(message)
+    # message = pkcs7(message)
     k0 = int(cipher.encrypt(key)[-32])
 
     def msb(n):
@@ -74,18 +74,18 @@ def calc_cmac(message: bytes, key: bytes) -> bytes:
     c = 0
     for m in itertools.batched(message, 16):
         if len(m) == 16:
-            #mq = k1 ^ m
+            # mq = k1 ^ m
             c = cipher.encrypt(c ^ m)[-16:]
         else:
             mq = (k2 << (16 - len(m)) + 1 << (15 - len(m))) ^ m
             c = cipher.encrypt(c ^ mq)[-16:]
     return c
 
-#def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
-#    c = CMAC.new(key, ciphermod=AES)
-#    c.update(message)
-#    return c.digest()
 
+def calc_cmac_reference(message: bytes, key: bytes) -> bytes:
+    c = CMAC.new(key, ciphermod=AES)
+    c.update(message)
+    return c.digest()
 
 
 def get_flag():
@@ -95,10 +95,10 @@ def get_flag():
 
     message1 = sf.readline().rstrip('\n')
     print(message1)
-    message1 = bytes(int(message1, 16))
-    answer = f'{base64.b64encode(calc_hmac(message1, KEY))};{base64.b64encode(calc_cbc_mac(message1, IV, KEY))};{base64.b64encode(calc_cmac(message1, KEY))}'
+    message1 = bytes.fromhex(message1)
+    answer = f'{base64.b64encode(calc_hmac(message1, KEY)).decode()};{base64.b64encode(calc_cbc_mac_reference(message1,IV, KEY)).decode()};{base64.b64encode(calc_cmac_reference(message1, KEY)).decode()}'
     print(answer)
-    sf.write(f'{answer}\n')
+    sf.write(answer + '\n')
     sf.flush()
     print(sf.readline().rstrip('\n'))
 
