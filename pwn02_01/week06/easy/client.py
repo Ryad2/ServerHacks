@@ -1,8 +1,9 @@
 import socket
+import random
 
 # Fill in the right target here
-HOST = 'this.is.not.a.valid.domain'  # TODO
-PORT = 0  # TODO
+HOST = 'netsec.net.in.tum.de'
+PORT = 20106
 
 
 def int_to_bytes(m):
