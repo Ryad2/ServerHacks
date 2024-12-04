@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 import random
 import socket
+from math import log2
 
 # Kerckhoff’s principle for the win
 # here are all the crypto primitives Alice and Bob are using
 from insecurelib import KDRV256, HMAC, encrypt, decrypt
 
 # Fill in the right target here
-HOST = 'this.is.not.a.valid.domain'  # TODO
-PORT1 = 20008
-PORT2 = 20108
+HOST = 'netsec.net.in.tum.de'
+PORT1 = 20206
+PORT2 = 20306
+#PORT1 = 20008
+#PORT2 = 20108
 
 
 # note the numbers you encounter may be small for demonstration purposes.
@@ -50,8 +53,63 @@ def main():
 
     # A -> B: p,g,X
     data = s1f.readline().rstrip('\n')
-    print(f"from s1 to s2: '{data}'")
     p, g, X = map(int, data.split(','))
+    #print(f"from s1 to s2:\np={p}\ng={g}\nX={X}\n")
+
+    # trick s2 into choosing b s.t. shared key = g^(ab) = 1
+    data = f'{X-1},{1},{X}'
+    s2f.write(data+'\n')
+    s2f.flush()
+
+    data = s2f.readline().rstrip('\n')
+    Y, sig = data.split(',')
+
+    # examine cert
+    iv , c, mac = sig.split(';')
+    #print(f"from s2 to s1:\nY={Y}\niv={iv}\nc={c}\nmac={mac}\n")
+
+    # forward s2 -> s1
+    s1f.write(data + '\n')
+    s1f.flush()
+
+    # forward s1 -> s2
+    data = s1f.readline().rstrip('\n')
+    s2f.write(data + '\n')
+    s2f.flush()
+
+    # channel is now setup
+    channel_shared_key = KDRV256((str(1)).encode())
+
+    # s2 -> s1
+    data = s2f.readline().rstrip('\n')
+    data = decrypt(channel_shared_key, data).decode()
+    p, g, X = map(int, data.split(','))
+
+    # we only talk with s2 from now on
+    b = 1
+    Y = pow(g, b, mod=p)
+    s2f.write(encrypt(channel_shared_key, str(Y).encode()).decode() + '\n')
+    s2f.flush()
+
+    #print("X=" + str(X))
+    # session is now setup;
+    session_shared_key = KDRV256((str(X)).encode())
+
+    flagReq = 'Hey Bob, plz send me my f14g :-)'
+    sessionFlagReq = encrypt(session_shared_key, flagReq.encode())
+    #print( "sessionFlagReq1: " + sessionFlagReq.decode())
+    channelFlagReq = encrypt(channel_shared_key, sessionFlagReq).decode()
+    #print( "channelFlagReq1: " + channelFlagReq)
+    s2f.write(channelFlagReq + '\n')
+    s2f.flush()
+    channelFlag = s2f.readline().rstrip('\n')
+    #print("channel Flag: " + channelFlag)
+
+    sessionFlag = decrypt(channel_shared_key, channelFlag).decode()
+    #print('sessionFlag: ' + sessionFlag)
+
+    flag = decrypt(session_shared_key, sessionFlag).decode()
+    print(flag)
 
     # TODO: get the flag
 
