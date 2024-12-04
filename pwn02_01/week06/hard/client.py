@@ -111,7 +111,7 @@ def main():
     flag = decrypt(session_shared_key, sessionFlag).decode()
     print(flag)
 
-    # TODO: get the flag
+
 
     s1f.close()
     s2f.close()
