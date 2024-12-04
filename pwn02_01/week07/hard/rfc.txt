@@ -1,0 +1,458 @@
+Network Working Group                                         Nolan Nets
+Internet-Draft                                    Nolan Nets Consuluting
+Intended status: Informational                                2024-12-03
+Expires: 2024-12-17
+
+             Encrypted Authenticated Secure Yapping (EASY)
+                         draft-netsec-easy-00
+
+Abstract
+
+   This document describes the Encrypted Authenticated Secure Yapping
+   (EASY) Protocol, which provides a secure, authenticated, and
+   encrypted communication channel over an insecure network. EASY uses
+   an authenticated Diffie-Hellman (DH) key exchange authenticated via
+   elliptic curve signatures to establish encryption and integrity keys
+   for subsequent data messages. The protocol ensures data
+   confidentiality, integrity, and authentication.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF). Note that other groups may also distribute working
+   documents as Internet-Drafts. The list of current Internet-Drafts is
+   at http://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time. It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as “work in progress.”
+
+   This Internet-Draft will expire on 2024-12-17.
+
+Copyright Notice
+
+   Copyright (c) 2024 IETF Trust and the persons identified as the
+   document authors. All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust’s Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document. Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document. Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+Table of Contents
+
+   1. Introduction .................................................. 2
+   2. Protocol Overview ............................................. 3
+   3. Message Formats ............................................... 3
+      3.1. Packet Format ............................................ 3
+      3.2. Packet Types ............................................. 4
+   4. Protocol Operations ........................................... 5
+      4.1. Key Exchange Phase ....................................... 5
+      4.2. Data Transmission Phase .................................. 7
+      4.3. Challenge-Response Phase ................................. 8
+   5. Security Considerations ....................................... 9
+   6. Implementation Notes .......................................... 9
+   7. References .................................................... 10
+
+1. Introduction
+
+   The Encrypted Authenticated Secure Yapping (EASY) Protocol is
+   designed to create a basic but robust secure channel similar to
+   IPSec, but significantly simplified for educational purposes. EASY
+   combines several cryptographic techniques to ensure secure
+   communication, including elliptic curve signatures for
+   authentication, Diffie-Hellman key exchange for shared secret
+   derivation, and symmetric encryption and HMAC for data
+   confidentiality and integrity.
+
+   The protocol operates in several phases:
+   1. Key Exchange: Using an authenticated Diffie-Hellman (DH) key
+      exchange, both parties derive a shared secret.
+   2. Key Derivation: From the DH shared secret, two keys are derived:
+      an HMAC key (hmac_key) for integrity protection and an encryption
+      key (enc_key) for encrypting data messages.
+   3. Data Transmission: Encrypted data messages are exchanged with
+      integrity checks via HMAC.
+
+   Additionally, EASY supports a challenge-response mechanism as a
+   special type of data message for mutual verification using ECC
+   signatures. This mechanism is optional and can be used independently
+   of the data transmission phase.
+
+   EASY assumes the availability of asymmetric elliptic curve
+   cryptography (ECC) keys for performing signatures and verifying
+   authenticity. The protocol is suitable for applications requiring
+   secure data transfer and authenticated challenge-response mechanisms,
+   such as secure messaging and secure file transfer.
+
+2. Protocol Overview
+
+  The EASY protocol consists of the following main components: 
+  1. Authenticated Diffie-Hellman Key Exchange:
+    - Party A and Party B perform a Diffie-Hellman key exchange.
+    - Party B includes an elliptic curve signature over the DH
+      parameters (X and Y).
+    - Party A sends a confirmation message with its own elliptic curve
+      signature over the DH parameters.
+  2. Key Derivation:
+    - From the DH shared secret, derive two keys:
+      - hmac_key: Used for generating HMACs for message integrity.
+      - enc_key: Used for encrypting data messages.
+  3. Data Messages:
+    - Encrypted using enc_key and appended with an HMAC using
+      hmac_key.
+
+   EASY also includes support for challenge-response messages as a
+   specialized form of data message. These messages utilize ECC
+   signatures over a challenge to ensure mutual verification.
+
+   The protocol employs the following cryptographic primitives:
+   - Key Derivation Function (KDF): HKDF with SHA-512
+   - Signatures: EdDSA with Ed25519 keys.
+   - Encryption: AES in CBC mode with a random IV. The plaintext is
+     padded to a multiple of 16 bytes with all zero bytes. The IV is
+     appended to the front of the ciphertext.
+
+
+3. Message Formats
+
+   The EASY defines several message types: Key Exchange Messages, Data
+   Messages, and Challenge-Response Messages. Each message type has a
+   specific format and purpose.
+
+3.1. Packet Format
+
+   The packet format of the protocol is as follows.
+   Offsets are in bytes. Each field MUST be encoded using big-endian
+   byte order.
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+---+-------+-----------------------------------------------+
+   |P|T|SEQ| Length|                                               |
+   +-+-+---+-------+                                               |
+   |                                                               |
+   |                                                               |
+   //                            Payload                           //
+   |                                                               |
+   |                                                               |
+   +---------------------------------------------------------------+
+   |                              HMAC                             |
+   +---------------------------------------------------------------+
+
+   - P: Protocol version (1 Byte)
+   - T: Packet type (1 Byte)
+   - SEQ: Sequence number (2 Bytes)
+   - Length: Length of payload (4 Bytes)
+   - Payload: The actual data being transmitted
+   - HMAC: Hash-based Message Authentication Code for integrity (32
+     Bytes)
+
+3.2. Packet Types
+
+   The packet types are defined as follows:
+
+   - KEY_EXCHANGE: 0x00
+   - CHALLENGE: 0x01
+   - RESPONSE: 0x02
+   - DATA: 0x03
+   - ERROR: 0x04
+
+4. Protocol Operations
+
+4.1. Key Exchange Phase
+
+   The Key Exchange Phase establishes a shared secret between Party A
+   and Party B using an authenticated Diffie-Hellman (DH) key exchange
+   with elliptic curve signatures. After step 1, all messages
+   include a HMAC calculated like described in Section 4.4.
+   For the initial message, the HMAC field is set to all 0s.
+
+   - Step 1: Party A Initiates the Exchange
+     - Party A calculates its public key:
+       ```
+       X = g^a mod p
+       ```
+       where g and p are fixed constants, and a is Party A's random
+       private key.
+     - Party A sends the public key X to Party B:
+       ```
+       { X }
+       ```
+
+       +--------+                +--------+
+       | Party A|                | Party B|
+       +--------+                +--------+
+            |                         |
+            |           X             |
+            +------------------------>|
+            |                         |
+
+   - Step 2: Party B Responds
+     - Party B calculates its public key:
+       ```
+       Y = g^b mod p
+       ```
+       where g and p are fixed constants, and b is Party B's random
+       private key.
+     - Party B signs the concatenated public keys (Y || X) using its ECC
+       private key:
+       ```
+       Signature_B = Sign(PrivateKey_B, Y || X)
+       ```
+     - Party B computes the shared secret (Z) using their respective DH
+       parameters:
+       ```
+       Z_B = X^b mod p
+       ```
+     - From the shared secret (Z), B derives the HMAC key
+       (hmac_key) and the encryption key (enc_key):
+       ```
+       hmac_key = HKDF(Z, "salty hmac", 256, "HMAC Key")
+       enc_key = HKDF(Z, "salty encryption", 256, "Encryption Key")
+       ```
+     - Party B sends its public key Y along with the signature to Party
+       A:
+       ```
+       { Y || Signature_B(Y || X) }
+       ```
+
+       +--------+                +--------+
+       | Party A|                | Party B|
+       +--------+                +--------+
+            |                         |
+            |           X             |
+            |------------------------>|
+            |     Y || Sig_B(Y||X)    |
+            |<------------------------+
+            |                         |
+
+   - Step 3: Party A verifies and responds
+     - Party A receives Y and Signature_B, and verifies the signature
+       using Party B's ECC public key:
+       ```
+       Verify(PublicKey_B, Signature_B, Y || X)
+       ```
+     - If the signature verification fails, Party A terminates the
+       protocol.
+     - If the signature verification succeeds, Party A signs the
+       concatenated public keys (X || Y) using its ECC private key:
+       ```
+       Signature_A = Sign(PrivateKey_A, X || Y)
+       ```
+     - Party A sends the signature to Party B:
+       ```
+       { Signature_A(X || Y) }
+       ```
+
+       +--------+                +--------+
+       | Party A|                | Party B|
+       +--------+                +--------+
+            |                         |
+            |           X             |
+            |------------------------>|
+            |     Y || Sig_B(Y||X)    |
+            |<------------------------|
+            |     Sig_A(X||Y)         |
+            +------------------------>|
+            |                         |
+
+   - Step 4: Party B verifies signature
+     - Party B receives Signature_A and verifies it using Party A's ECC
+       public key:
+       ```
+       Verify(PublicKey_A, Signature_A, X || Y)
+       ```
+     - If the signature verification fails, Party B terminates the
+       protocol.
+     - If the signature verification succeeds, both parties proceed to
+       compute the shared secret.
+
+   - Step 5: Party A computes the shared secret
+     - Party A computes the shared secret (Z) using their respective DH
+       parameters:
+       ```
+       Z_A = Y^a mod p
+       ```
+
+   - Step 6: Key Derivation
+     - From the shared secret (Z), Party A derives the HMAC key
+       (hmac_key) and the encryption key (enc_key):
+       ```
+       hmac_key = HKDF(Z, "salty hmac", 256, "HMAC Key")
+       enc_key = HKDF(Z, "salty encryption", 256, "Encryption Key")
+       ```
+
+4.2. Data Transmission Phase
+
+   Once the keys are derived, Party A and Party B can securely transmit
+   data messages.
+
+   - Step 1: Encrypt Data
+     - The sender (Party A or Party B) encrypts the data using the
+       encryption key (enc_key) with AES in CBC mode and a random IV.
+       The plaintext is padded to a multiple of 16 bytes with all zero
+       bytes:
+       ```
+       Encrypted_Data = AES-CBC(enc_key, IV, pad(Data))
+       ```
+     - The IV is appended to the front of the ciphertext.
+
+   - Step 2: Construct Message
+     - The sender constructs the message including the protocol version,
+       packet type, sequence number, payload length, and encrypted data.
+     - The HMAC field is initially set to all 0s:
+       ```
+       Message = { P, T, SEQ, Length, Encrypted_Data, HMAC=0 }
+       ```
+
+   - Step 3: Compute HMAC
+     - The sender computes the HMAC like described in section 4.4 and
+       sets the HMAC field in the message:
+
+   - Step 4: Send Data Message
+     - The sender sends the message to the receiver.
+
+       +--------+                +--------+
+       | Sender |                |Receiver|
+       +--------+                +--------+
+            |                         |
+            |  Encrypted Data Message |
+            +------------------------>|
+            |                         |
+
+   - Step 5: Verify and Decrypt Data
+     - The receiver receives the message and extracts the HMAC field.
+     - The receiver sets the HMAC field to 0s and verifies the HMAC over
+       the entire message using the HMAC key (hmac_key):
+       ```
+       Verify_HMAC(hmac_key, Message_with_HMAC_0s, Received_HMAC)
+       ```
+     - If the HMAC verification fails, the receiver discards the
+       message.
+     - If the HMAC verification succeeds, the receiver decrypts the data
+       using the encryption key (enc_key):
+       ```
+       Data = Decrypt(enc_key, Encrypted_Data[IV_length:])
+       ```
+
+4.3. Challenge-Response Phase
+
+ The Challenge-Response Phase provides an optional mechanism for mutual 
+ verification using Elliptic Curve Cryptography (ECC) signatures. This 
+ mechanism is designed to operate independently of the data transmission 
+ phase. Implementations utilizing this phase MUST ensure that encryption
+ is applied.
+
+   - Step 1: Send Challenge
+     - The challenger sends an encrypted challenge message containing a
+       random challenge value. Encryption is done with the shared
+       encryption key (enc_key):
+       ```
+       { Challenge_Value }
+       ```
+
+       +----------+                +---------+
+       |Challenger|               |Responder|
+       +----------+               +---------+
+            |                         |
+            |   Enc_Challenge_Value   |
+            +------------------------>|
+            |                         |
+
+   - Step 2: Respond to Challenge
+     - The responder decrypts and signs the challenge value using its
+       ECC private key:
+       ```
+       Signature_Response = Sign(PrivateKey_Responder, Challenge_Value)
+       ```
+     - The responder sends the encrypted signed response back to the
+       challenger:
+       ```
+       { Signature_Response(Challenge_Value) }
+       ```
+
+       +----------+               +---------+
+       |Challenger|               |Responder|
+       +----------+               +---------+
+            |                          |
+            |  Enc_Signature_Response  |
+            |<-------------------------|
+            |                          |
+
+   - Step 3: Verify Response
+     - The challenger decrypts and verifies the signature using the
+       responder's ECC public key:
+       ```
+       Verify(PublicKey_Responder, Signature_Response, Challenge_Value)
+       ```
+     - If the signature verification fails, the challenge-response
+       process is considered unsuccessful.
+     - If the signature verification succeeds, the challenge-response
+       process is considered successful.
+
+4.4 HMAC Calculation
+
+   The HMAC of a packet is calculated as follows:
+   ```
+   HMAC = HMAC-SHA256(hmac_key, Packet)
+   ```
+
+   For the purpose of the HMAC calculation, the HMAC field in the packet
+   is set to all 0 bytes.
+
+
+5. Security Considerations
+
+   The security of EASY relies on the strength of the elliptic curve
+   cryptography used for signatures and the DH key exchange. The
+   authenticated DH ensures that both parties are legitimate, and the
+   derived keys (hmac_key and enc_key) ensure the confidentiality and
+   integrity of the data messages.
+
+   Potential vulnerabilities include:
+   - Compromise of private ECC keys, leading to the ability to forge
+     signatures and decrypt messages.
+   - Weaknesses in the underlying cryptographic algorithms.
+
+6. Implementation Notes
+
+   Implementers should ensure the use of a secure random number
+   generator for key generation and adhere to best practices for
+   cryptographic implementations to avoid common pitfalls such as
+   side-channel attacks.
+
+   For the DH key exchange secure parameters from RFC3526 (group #14)
+   are used.
+
+   The hmac key derivation is done using HKDF-SHA512 with 32 bytes
+   derived key length, the salt "salty hmac", and context "HMAC Key".
+
+   The encryption key derivation is done using HKDF-SHA512 with 32 bytes
+   derived key length, the salt "salty encryption" and context
+   "Encryption Key".
+
+   Error messages sent before the key exchange is completed are sent
+   with a MAC of all 0s. Error messages are never encrypted.
+
+7. References
+
+   [1] Diffie-Hellman Key Exchange
+   [2] Elliptic Curve Cryptography (ECC)
+   [3] HMAC (Hash-Based Message Authentication Code)
+   [4] Symmetric Encryption Algorithms (e.g., AES)
+
+Author's Address
+
+   Nolan Nets
+   Nolan Nets Consoluting
+   Hacker Way 1, 83620 Elendskirchen
