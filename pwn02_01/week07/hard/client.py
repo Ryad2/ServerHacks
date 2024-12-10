@@ -115,7 +115,7 @@ def get_flag():
 
     s.connect((HOST, PORT))
     sf = s.makefile('rw')  # we use a file abstraction for the sockets
-    
+
     def write(m):
         sf.write(m.hex()+'\n')
         sf.flush()
