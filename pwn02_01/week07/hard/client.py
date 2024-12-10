@@ -29,6 +29,12 @@ class PACKET_TYPE(Enum):
     DATA = 0x03
     ERROR = 0x04
 
+
+def padn(l:int, n:int)->int:
+    return n - (l % n)
+def pad(msg:bytes, n:int)->bytes:
+    return b'\0' * padn(len(msg), n)
+
 def calc_hmac(message: bytes, key: bytes) -> bytes:
     return hmac.new(key, message, digestmod='sha256').digest()
 
@@ -48,21 +54,22 @@ class Packet(object):
         self.valid = valid
         self.hmac = hmac
     def to_bytes(self):
-        msg = bytes(self.protocol_version)[:1] + bytes(self.packet_type.value)[:1] + bytes(self.seq)[:2] + bytes(len(self.payload))[:4] + self.payload
+        msg = self.protocol_version.to_bytes(1,byteorder='big') + self.packet_type.value.to_bytes(1,byteorder='big') + self.seq.to_bytes(2,byteorder='big') + len(self.payload).to_bytes(4,byteorder='big') + self.payload
         # pad to multiple of 32 bytes
-        while len(msg) % 32 != 0:
-            msg += bytes(1)
+        msg += pad(msg, 32)
         return msg + self.hmac
     def compute_hmac(self, key):
         self.hmac = bytes(32)
         self.hmac = calc_hmac(self.to_bytes(), key)[:32]
         return self
+    def __str__(self):
+        return f"protocol_version: {self.protocol_version}, packet_type: {self.packet_type}, seq: {self.seq}, payload: {self.payload.hex()}, valid: {self.valid}, hmac: {self.hmac}"
 
 def make_packet(protocol_version:int, packet_type:int, seq:int, payload:bytes, key:bytes=None) -> bytes:
         msg = Packet(protocol_version, packet_type, seq, payload)
         if key is not None:
-            msg.compute_hmac(key)
-        return msg.to_bytes()
+            return msg.compute_hmac(key)
+        return msg
 
 def parse_packet(msg:bytes, key=None):
         protocol_version = int.from_bytes(msg[0:1], byteorder='big')
@@ -71,8 +78,7 @@ def parse_packet(msg:bytes, key=None):
         l = int.from_bytes(msg[4:8], byteorder='big')
         payload = msg[8:8+l]
         i = 8+l
-        while i % 32 != 0:
-            i += 1
+        i += padn(i, 32)
         hmac = msg[i:i+32]
         if key is not None:
             valid = calc_hmac(Packet(protocol_version, packet_type, seq, payload).to_bytes(),key)[:32] == hmac
@@ -96,8 +102,7 @@ class Encrypted(object):
         self.iv = iv
         self.message = message
         # pad to multiple of 16 bytes
-        while (len(self.message)%16 != 0):
-            self.message += bytes(1)
+        self.message += pad(self.message, 16)
     
     def to_bytes(self):
         cipher = AES.new(self.key_enc, AES.MODE_CBC, self.iv)
@@ -117,9 +122,9 @@ def get_flag():
     sf = s.makefile('rw')  # we use a file abstraction for the sockets
     
     def write(m):
-        sf.write(m.hex()+'\n')
+        sf.write(m.to_bytes().hex()+'\n')
         sf.flush()
-        print('Wrote:', m.hex())
+        print('Wrote:', m, '\n', m.to_bytes().hex())
     def read():
         ln = sf.readline().rstrip('\n')
         print('Got:', ln)
@@ -142,7 +147,7 @@ def get_flag():
     # Step 3
     p = read()
     if not verify_signature(p.payload, yb, xb):
-        print('Invalid signature')
+        print('Invalid signature:', p.payload.decode())
     
     # Data Transmit
     # Challenge response
