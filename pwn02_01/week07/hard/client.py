@@ -86,12 +86,12 @@ def parse_packet(msg:bytes, key=None):
             valid = True
         return Packet(protocol_version, packet_type, seq, payload, hmac, valid)
 
-def calculateX(a, g = STS_GENERATOR, p = STS_PRIME):
+def gExpModP(a, g = STS_GENERATOR, p = STS_PRIME):
     return pow(g, a, mod=p)
 
 
-def verify_signature(sig, Y, X):
-    return verify(SERVER_PUB_KEY, message=f'{Y}{X}'.encode(), signature=sig)
+def verify_signature(sig, x, y):
+    return verify(SERVER_PUB_KEY, message=f'{x}{y}'.encode(), signature=sig)
 
 def make_signature(y, x):
     return sign(CLIENT_PRV_KEY, message=f'{y}{x}'.encode())
@@ -127,8 +127,9 @@ def get_flag():
         print('Wrote:', m, '\n', m.to_bytes().hex())
     def read():
         ln = sf.readline().rstrip('\n')
-        print('Got:', ln)
-        return parse_packet(bytes.fromhex(ln))
+        p = parse_packet(bytes.fromhex(ln))
+        print('Got:', ln, '\n', p)
+        return p
 
     # Step 1
     p = read()
@@ -136,17 +137,17 @@ def get_flag():
     x = int.from_bytes(xb, byteorder='big')
 
     # Step 2
-    b = 7 # TODO
-    y = calculateX(b)
+    b = 7 # TODO random
+    y = gExpModP(b)
     yb = int.to_bytes(y, len(xb), byteorder='big')
-    z = calculateX(x)
+    z = gExpModP(b, g=x)
     zb = int.to_bytes(z, len(xb), byteorder='big')
     hmac_key, enc_key = derive_keys(zb)
-    write(make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb,xb), hmac_key))
+    write(make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb,xb), key=hmac_key))
 
     # Step 3
     p = read()
-    if not verify_signature(p.payload, yb, xb):
+    if not verify_signature(p.payload, xb, yb):
         print('Invalid signature:', p.payload.decode())
     
     # Data Transmit
