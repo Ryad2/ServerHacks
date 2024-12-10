@@ -43,6 +43,8 @@ def main():
     # They send all their communication over us. How convenient :-)
     # Dolev-Yao attacker model without any low-level effort.
 
+    USE_MATH_TRICK_ZERO = random.choice([True,False])
+
     s1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s1.connect((HOST, PORT1))
     s1f = s1.makefile('rw')  # file abstraction for the sockets
@@ -56,8 +58,13 @@ def main():
     p, g, X = map(int, data.split(','))
     #print(f"from s1 to s2:\np={p}\ng={g}\nX={X}\n")
 
-    # trick s2 into choosing b s.t. shared key = g^(ab) = 1
-    data = f'{X-1},{1},{X}'
+    if USE_MATH_TRICK_ZERO:
+        # trick s2 into Y = 0
+        # shared key = g^(ab) `mod` g = 0
+        data = f'{g},{g},{X}'
+    else:
+        # trick s2 into choosing b s.t. shared key = g^(ab) = 1
+        data = f'{X-1},{1},{X}'
     s2f.write(data+'\n')
     s2f.flush()
 
@@ -78,8 +85,11 @@ def main():
     s2f.flush()
 
     # channel is now setup
-    channel_shared_key = KDRV256((str(1)).encode())
-
+    if USE_MATH_TRICK_ZERO:
+        channel_shared_key = KDRV256((str(0)).encode())
+    else:
+        channel_shared_key = KDRV256((str(1)).encode())
+    
     # s2 -> s1
     data = s2f.readline().rstrip('\n')
     data = decrypt(channel_shared_key, data).decode()
