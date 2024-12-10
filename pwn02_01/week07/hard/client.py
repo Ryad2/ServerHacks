@@ -35,7 +35,7 @@ def calc_hmac(message: bytes, key: bytes) -> bytes:
 def derive_keys(Z:bytes):
     l = 256 # TODO the documentation states both 256 (l.291f) and 512 (l.437,440)
     hmac_key = HKDF(master=Z, key_len=l, salt=b"salty hmac", hashmod=SHA512, context=b"HMAC Key")
-    enc_key = HKDF(master=Z, key_len=l,salt="salty encryption", hashmod=SHA512, context="Encryption Key")
+    enc_key = HKDF(master=Z, key_len=l, salt=b"salty encryption", hashmod=SHA512, context=b"Encryption Key")
     return hmac_key, enc_key
 
 
@@ -90,6 +90,26 @@ def verify_signature(sig, Y, X):
 def make_signature(y, x):
     return sign(CLIENT_PRV_KEY, message=f'{y}{x}'.encode())
 
+class Encrypted(object):
+    def __init__(self, enc_key, iv, message):
+        self.enc_key = enc_key
+        self.iv = iv
+        self.message = message
+        # pad to multiple of 16 bytes
+        while (len(self.message)%16 != 0):
+            self.message += bytes(1)
+    
+    def to_bytes(self):
+        cipher = AES.new(self.key_enc, AES.MODE_CBC, self.iv)
+        return self.iv + cipher.encrypt(self.message)
+
+def parse_encrypted(enc_key, encrypted):
+    iv = encrypted[:AES.block_size]
+    message = encrypted[AES.block_size:]
+    cipher = AES.new(key_enc, AES.MODE_CBC, iv)
+    message = cipher.decrypt(message)
+    return Encrypted(enc_key, iv, message)
+
 def get_flag():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -121,7 +141,13 @@ def get_flag():
 
     # Step 3
     p = read()
+    if not verify_signature(p.payload, yb, xb):
+        print('Invalid signature')
     
+    # Data Transmit
+    # Challenge response
+    p = read()
+
 
 
 if __name__ == '__main__':
