@@ -151,9 +151,19 @@ def get_flag():
         print('Invalid signature:', p.payload.decode())
     
     # Data Transmit
+
     # Challenge response
     p = read()
+    if p.packet_type is not PACKET_TYPE.CHALLENGE:
+        print('Expected challenge:', p)
+    challenge = parse_encrypted(enc_key. p.payload).message
+    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq + 1, sign(CLIENT_PRV_KEY, challenge)))
 
+    # Data Transmit
+    # Flag
+    p = read()
+    flag = parse_encrypted(enc_key, p.payload).message
+    print(flag)
 
 
 if __name__ == '__main__':
