@@ -39,7 +39,7 @@ def calc_hmac(message: bytes, key: bytes) -> bytes:
     return hmac.new(key, message, digestmod='sha256').digest()
 
 def derive_keys(Z:bytes):
-    l = 256 # TODO the documentation states both 256 (l.291f) and 512 (l.437,440)
+    l = 32 # = 256 bit
     hmac_key = HKDF(master=Z, key_len=l, salt=b"salty hmac", hashmod=SHA512, context=b"HMAC Key")
     enc_key = HKDF(master=Z, key_len=l, salt=b"salty encryption", hashmod=SHA512, context=b"Encryption Key")
     return hmac_key, enc_key
@@ -83,18 +83,18 @@ def parse_packet(msg:bytes, key=None):
         if key is not None:
             valid = calc_hmac(Packet(protocol_version, packet_type, seq, payload).to_bytes(),key)[:32] == hmac
         else:
-            valid = True
+            valid = None
         return Packet(protocol_version, packet_type, seq, payload, hmac, valid)
 
 def gExpModP(a, g = STS_GENERATOR, p = STS_PRIME):
     return pow(g, a, mod=p)
 
 
-def verify_signature(sig, x, y):
-    return verify(SERVER_PUB_KEY, message=f'{x}{y}'.encode(), signature=sig)
+def verify_signature(sig, m):
+    return verify(SERVER_PUB_KEY, message=m, signature=sig)
 
-def make_signature(y, x):
-    return sign(CLIENT_PRV_KEY, message=f'{y}{x}'.encode())
+def make_signature(m):
+    return sign(CLIENT_PRV_KEY, message=m)
 
 class Encrypted(object):
     def __init__(self, enc_key, iv, message):
@@ -102,16 +102,17 @@ class Encrypted(object):
         self.iv = iv
         self.message = message
         # pad to multiple of 16 bytes
-        self.message += pad(self.message, 16)
+        self.message += pad(self.message, AES.block_size)
     
     def to_bytes(self):
         cipher = AES.new(self.key_enc, AES.MODE_CBC, self.iv)
         return self.iv + cipher.encrypt(self.message)
 
 def parse_encrypted(enc_key, encrypted):
-    iv = encrypted[:AES.block_size]
-    message = encrypted[AES.block_size:]
-    cipher = AES.new(key_enc, AES.MODE_CBC, iv)
+    ivlen = AES.block_size
+    iv = encrypted[:ivlen]
+    message = encrypted[ivlen:]
+    cipher = AES.new(enc_key, AES.MODE_CBC, iv)
     message = cipher.decrypt(message)
     return Encrypted(enc_key, iv, message)
 
@@ -139,16 +140,18 @@ def get_flag():
     # Step 2
     b = 7 # TODO random
     y = gExpModP(b)
-    yb = int.to_bytes(y, len(xb), byteorder='big')
+    yb = int.to_bytes(y, 64, byteorder='big', signed=False)
     z = gExpModP(b, g=x)
-    zb = int.to_bytes(z, len(xb), byteorder='big')
+    print(z)
+    zb = int.to_bytes(z, 64, byteorder='big', signed=False)
     hmac_key, enc_key = derive_keys(zb)
-    write(make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb,xb), key=hmac_key))
+    write(make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb + xb), key=hmac_key))
 
     # Step 3
     p = read()
-    if not verify_signature(p.payload, xb, yb):
+    if not verify_signature(p.payload, xb + yb):
         print('Invalid signature:', p.payload.decode())
+        return
     
     # Data Transmit
 
@@ -156,8 +159,9 @@ def get_flag():
     p = read()
     if p.packet_type is not PACKET_TYPE.CHALLENGE:
         print('Expected challenge:', p)
-    challenge = parse_encrypted(enc_key. p.payload).message
-    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq + 1, sign(CLIENT_PRV_KEY, challenge)))
+        return
+    challenge = parse_encrypted(enc_key, p.payload).message
+    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq + 1, make_signature(challenge)))
 
     # Data Transmit
     # Flag
