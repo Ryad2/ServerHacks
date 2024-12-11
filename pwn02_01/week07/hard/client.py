@@ -46,7 +46,7 @@ def derive_keys(Z:bytes):
 
 
 class Packet(object):
-    def __init__(self, protocol_version:int, packet_type:PACKET_TYPE, seq:int, payload:bytes, hmac:bytes=bytes(32), valid:bool=True):
+    def __init__(self, protocol_version:int, packet_type:PACKET_TYPE, seq:int, payload:bytes, hmac:bytes=bytes(32), valid:bool=None):
         self.protocol_version = protocol_version
         self.packet_type = packet_type
         self.seq = seq
@@ -60,7 +60,7 @@ class Packet(object):
         return msg + self.hmac
     def compute_hmac(self, key):
         self.hmac = bytes(32)
-        self.hmac = calc_hmac(self.to_bytes(), key)[:32]
+        self.hmac = calc_hmac(self.to_bytes(), key)
         return self
     def __str__(self):
         return f"protocol_version: {self.protocol_version}, packet_type: {self.packet_type}, seq: {self.seq}, payload: {self.payload.hex()}, valid: {self.valid}, hmac: {self.hmac}"
@@ -80,8 +80,10 @@ def parse_packet(msg:bytes, key=None):
         i = 8+l
         i += padn(i, 32)
         hmac = msg[i:i+32]
+        if len(hmac) != 32:
+            print('Unexpected end of message, hmac expected, got:', len(hmac), hmac)
         if key is not None:
-            valid = calc_hmac(Packet(protocol_version, packet_type, seq, payload).to_bytes(),key)[:32] == hmac
+            valid = calc_hmac(Packet(protocol_version, packet_type, seq, payload).to_bytes(),key) == hmac
         else:
             valid = None
         return Packet(protocol_version, packet_type, seq, payload, hmac, valid)
@@ -114,7 +116,7 @@ def parse_encrypted(enc_key, encrypted):
     message = encrypted[ivlen:]
     cipher = AES.new(enc_key, AES.MODE_CBC, iv)
     message = cipher.decrypt(message)
-    return Encrypted(enc_key, iv, message)
+    return Encrypted(enc_key=enc_key, iv=iv, message=message)
 
 def get_flag():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -125,11 +127,11 @@ def get_flag():
     def write(m):
         sf.write(m.to_bytes().hex()+'\n')
         sf.flush()
-        print('Wrote:', m, '\n', m.to_bytes().hex())
+        print('Wrote:', m, '\n=', m.to_bytes().hex())
     def read():
         ln = sf.readline().rstrip('\n')
         p = parse_packet(bytes.fromhex(ln))
-        print('Got:', ln, '\n', p)
+        print('Got:', ln, '\n=', p)
         return p
 
     # Step 1
@@ -142,10 +144,11 @@ def get_flag():
     y = gExpModP(b)
     yb = int.to_bytes(y, 256, byteorder='big', signed=False)
     z = gExpModP(b, g=x)
-    print(z)
+    print('z =', z)
     zb = int.to_bytes(z, 256, byteorder='big', signed=False)
     hmac_key, enc_key = derive_keys(zb)
-    write(make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb + xb), key=hmac_key))
+    p = make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb + xb), key=hmac_key)
+    write(p)
 
     # Step 3
     p = read()
