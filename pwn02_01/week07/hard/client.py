@@ -120,17 +120,18 @@ def get_flag():
     s.connect((HOST, PORT))
     sf = s.makefile('rw')  # we use a file abstraction for the sockets
 
+    def debug(x):
+        #print(x)
+        pass
     def write(m):
         sf.write(m.to_bytes().hex()+'\n')
         sf.flush()
-        print('Wrote:', m, '\n=', m.to_bytes().hex())
+        debug('Wrote: ' + str(m) + '\n= ' + str(m.to_bytes().hex()))
     def read(key=None):
         ln = sf.readline().rstrip('\n')
         p = parse_packet(bytes.fromhex(ln), key=key)
-        print('Got:', ln, '\n=', p)
+        debug('Got: ' + str(ln) + '\n= ' + str(p))
         return p
-    def debug(x):
-        print(x)
 
     # Step 1
     p = read()
