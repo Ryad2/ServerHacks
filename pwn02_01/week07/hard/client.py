@@ -54,10 +54,7 @@ class Packet(object):
         self.valid = valid
         self.hmac = hmac
     def to_bytes(self):
-        msg = self.protocol_version.to_bytes(1,byteorder='big') + self.packet_type.value.to_bytes(1,byteorder='big') + self.seq.to_bytes(2,byteorder='big') + len(self.payload).to_bytes(4,byteorder='big') + self.payload
-        # pad to multiple of 32 bytes
-        msg += pad(msg, 32)
-        return msg + self.hmac
+        return self.protocol_version.to_bytes(1,byteorder='big') + self.packet_type.value.to_bytes(1,byteorder='big') + self.seq.to_bytes(2,byteorder='big') + len(self.payload).to_bytes(4,byteorder='big') + self.payload + self.hmac
     def compute_hmac(self, key):
         self.hmac = bytes(32)
         self.hmac = calc_hmac(self.to_bytes(), key)
@@ -65,7 +62,7 @@ class Packet(object):
     def __str__(self):
         return f"protocol_version: {self.protocol_version}, packet_type: {self.packet_type}, seq: {self.seq}, payload: {self.payload.hex()}, valid: {self.valid}, hmac: {self.hmac}"
 
-def make_packet(protocol_version:int, packet_type:int, seq:int, payload:bytes, key:bytes=None) -> bytes:
+def make_packet(protocol_version:int, packet_type:PACKET_TYPE, seq:int, payload:bytes, key:bytes=None) -> bytes:
         msg = Packet(protocol_version, packet_type, seq, payload)
         if key is not None:
             return msg.compute_hmac(key)
@@ -73,12 +70,11 @@ def make_packet(protocol_version:int, packet_type:int, seq:int, payload:bytes, k
 
 def parse_packet(msg:bytes, key=None):
         protocol_version = int.from_bytes(msg[0:1], byteorder='big')
-        packet_type = int.from_bytes(msg[1:2], byteorder='big')
+        packet_type = PACKET_TYPE(int.from_bytes(msg[1:2], byteorder='big'))
         seq = int.from_bytes(msg[2:4], byteorder='big')
         l = int.from_bytes(msg[4:8], byteorder='big')
         payload = msg[8:8+l]
         i = 8+l
-        i += padn(i, 32)
         hmac = msg[i:i+32]
         if len(hmac) != 32:
             print('Unexpected end of message, hmac expected, got:', len(hmac), hmac)
@@ -128,11 +124,13 @@ def get_flag():
         sf.write(m.to_bytes().hex()+'\n')
         sf.flush()
         print('Wrote:', m, '\n=', m.to_bytes().hex())
-    def read():
+    def read(key=None):
         ln = sf.readline().rstrip('\n')
-        p = parse_packet(bytes.fromhex(ln))
+        p = parse_packet(bytes.fromhex(ln), key=key)
         print('Got:', ln, '\n=', p)
         return p
+    def debug(x):
+        print(x)
 
     # Step 1
     p = read()
@@ -144,14 +142,14 @@ def get_flag():
     y = gExpModP(b)
     yb = int.to_bytes(y, 256, byteorder='big', signed=False)
     z = gExpModP(b, g=x)
-    print('z =', z)
+    debug('z = ' + str(z))
     zb = int.to_bytes(z, 256, byteorder='big', signed=False)
     hmac_key, enc_key = derive_keys(zb)
     p = make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb + xb), key=hmac_key)
     write(p)
 
     # Step 3
-    p = read()
+    p = read(hmac_key)
     if not verify_signature(p.payload, xb + yb):
         print('Invalid signature:', p.payload.decode())
         return
@@ -159,16 +157,20 @@ def get_flag():
     # Data Transmit
 
     # Challenge response
-    p = read()
+    debug('Challenge response')
+    p = read(hmac_key)
     if p.packet_type is not PACKET_TYPE.CHALLENGE:
         print('Expected challenge:', p)
         return
     challenge = parse_encrypted(enc_key, p.payload).message
-    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq + 1, make_signature(challenge)))
+    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq, make_signature(challenge), key=hmac_key))
 
     # Data Transmit
     # Flag
-    p = read()
+    p = read(hmac_key)
+    if (p.packet_type == PACKET_TYPE.ERROR):
+        print(p.payload.decode())
+        return
     flag = parse_encrypted(enc_key, p.payload).message
     print(flag)
 
