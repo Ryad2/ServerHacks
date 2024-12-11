@@ -140,10 +140,10 @@ def get_flag():
     # Step 2
     b = 7 # TODO random
     y = gExpModP(b)
-    yb = int.to_bytes(y, 64, byteorder='big', signed=False)
+    yb = int.to_bytes(y, 256, byteorder='big', signed=False)
     z = gExpModP(b, g=x)
     print(z)
-    zb = int.to_bytes(z, 64, byteorder='big', signed=False)
+    zb = int.to_bytes(z, 256, byteorder='big', signed=False)
     hmac_key, enc_key = derive_keys(zb)
     write(make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb + xb), key=hmac_key))
 
