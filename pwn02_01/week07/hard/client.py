@@ -31,7 +31,7 @@ class PACKET_TYPE(Enum):
 
 
 def padn(l:int, n:int)->int:
-    return n - (l % n)
+    return (n - (l % n)) % n
 def pad(msg:bytes, n:int)->bytes:
     return b'\0' * padn(len(msg), n)
 
@@ -103,7 +103,7 @@ class Encrypted(object):
         self.message += pad(self.message, AES.block_size)
     
     def to_bytes(self):
-        cipher = AES.new(self.key_enc, AES.MODE_CBC, self.iv)
+        cipher = AES.new(self.enc_key, AES.MODE_CBC, self.iv)
         return self.iv + cipher.encrypt(self.message)
 
 def parse_encrypted(enc_key, encrypted):
@@ -163,7 +163,12 @@ def get_flag():
         print('Expected challenge:', p)
         return
     challenge = parse_encrypted(enc_key, p.payload).message
-    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq, make_signature(challenge), key=hmac_key))
+    debug('challenge: ' + str(challenge))
+    signature = make_signature(challenge)
+    debug('verify: ' + str(verify(CLIENT_PUB_KEY, challenge, signature)))
+    iv = bytes(AES.block_size) # TODO random
+    message = Encrypted(enc_key, iv, signature).to_bytes()
+    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq, message, key=hmac_key))
 
     # Data Transmit
     # Flag
@@ -172,7 +177,7 @@ def get_flag():
         print(p.payload.decode())
         return
     flag = parse_encrypted(enc_key, p.payload).message
-    print(flag)
+    print(flag.decode())
 
 
 if __name__ == '__main__':
