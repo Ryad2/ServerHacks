@@ -1,6 +1,7 @@
 import base64
 import socket
 import hashlib
+import random
 
 from Crypto.Cipher import AES
 
@@ -104,7 +105,7 @@ def get_flag():
         return encrypt_command(f'get {f} {t}')
     def cmd_replace(f:int = 0, d:bytes = bytes(0)) -> str:
         return encrypt_command(f'replace {f} {d.hex()}')
-    def cmd_replace_hack(f:int = 0, d:bytes = bytes(0)) -> str:
+    def cmd_replace_obfuscated(f:int = 0, d:bytes = bytes(0)) -> str:
         return encrypt_command(f'r_e_p_l_a_c_e {f} {d.hex()}')
     def cmd_add(d:bytes = bytes(0)) -> str:
         return encrypt_command(f'add {d.hex()}')
@@ -118,11 +119,11 @@ def get_flag():
         if 'enter password to replace data' == read():
             write(p)
             read()
-    def replace_hack(f:int = 0, d:bytes = bytes(0), password_on_hack_fail = password):
+    def replace_obfuscated(f:int = 0, d:bytes = bytes(0), password_on_hack_fail = password):
         debug(f'Replace from {f} using hack with {d}')
-        write(cmd_replace_hack(f,d))
+        write(cmd_replace_obfuscated(f,d))
         if 'enter password to replace data' == read():
-            debug('Hack failed')
+            debug('Obfuscating failed to ignore password check')
             write(password_on_hack_fail)
             read()
     def add(d:bytes = bytes(0)):
@@ -131,17 +132,38 @@ def get_flag():
         read()
 
 
+    # multiple solutions possible
+    SEND_STRATEGIES = ['SEND ZERO', 'SEND DATA']
+    SEND_STRATEGY = random.choice(SEND_STRATEGIES)
+
+
     msg_welcome = read()
 
     # get data containing encrypted flag
     containing_encrypted_flag = get()
 
-    # replace all data with 0
-    replace_hack(d= bytes(len(containing_encrypted_flag)))
+    if SEND_STRATEGY == 'SEND ZERO':
+        # replace all data with 0
+        toSend = bytes(len(containing_encrypted_flag))
+    if SEND_STRATEGY == 'SEND DATA':
+        # re-encrypt data using symmetric method
+        toSend = containing_encrypted_flag
+    
+    # obfuscate command to use replace without password
+    replace_obfuscated(d= toSend)
 
-    encryption_stream = get()
-
-    containing_flag = bytes([a ^ b for a, b in zip(containing_encrypted_flag, encryption_stream)])
+    # get all data again
+    got = get()
+    
+    if SEND_STRATEGY == 'SEND ZERO':
+        # 0 xor encryption_stream = encryption_stream
+        encryption_stream = got
+        # encrypted xor encryption_stream = data
+        containing_flag = bytes([a ^ b for a, b in zip(containing_encrypted_flag, encryption_stream)])
+    if SEND_STRATEGY == 'SEND DATA':
+        # server decrypted for us
+        # newdata = encrypt (data xor encryption_stream) = data xor encryption_stream xor encryption_stream = data
+        containing_flag = got
 
     flag_position = containing_flag.find(b'flag')
     flag = containing_flag[flag_position : flag_position + 42]
