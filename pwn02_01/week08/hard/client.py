@@ -1,5 +1,6 @@
 import base64
 import socket
+import hashlib
 
 from Crypto.Cipher import AES
 
@@ -17,7 +18,7 @@ PW_HASH = bytes.fromhex(
 max_data_length = 1000000000000000000000000000000000000000
 
 def debug(x):
-    print(x)
+    #print(x)
     pass
 
 def encrypt_command(command: str) -> str:
@@ -51,7 +52,7 @@ def reverse_add_data(ciphered_data: bytes, data_key: bytes) -> bytes:
     return plaintext
 
 
-def get_flag():
+def guess_password():
     # Brute force password
     # cost parameter 2 ** n
     ne = 16384
@@ -66,20 +67,24 @@ def get_flag():
     p = 1
     # salt
     s = SALT
-    s64 = base64.b64encode(s).decode()
+    s64 = base64.b64encode(s[:32]).decode()
     # scrypt checksum
-    h = PW_HASH
-    h64 = base64.b64encode(h).decode()
+    h = hashlib.scrypt("password".encode(), salt=s, n=ne, r=r, p=p)
+    h64 = base64.b64encode(h[:32]).decode()
     # scrypt format
     scrypt= f"SCRYPT:{n}:{r}:{p}:{s64}:{h64}"
     debug('Hash: ' + str(scrypt))
     with open('hash', 'w') as hf:
         hf.write(scrypt)
-    # todo: externally guess password from hash
+    # externally guess password from hash was not feasible
     with open('password', 'r') as pf:
         password = pf.read()
     debug('Password: ' + str(password))
+    return password
 
+
+def get_flag():
+    password = '' #guess_password()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -99,17 +104,26 @@ def get_flag():
         return encrypt_command(f'get {f} {t}')
     def cmd_replace(f:int = 0, d:bytes = bytes(0)) -> str:
         return encrypt_command(f'replace {f} {d.hex()}')
+    def cmd_replace_hack(f:int = 0, d:bytes = bytes(0)) -> str:
+        return encrypt_command(f'r_e_p_l_a_c_e {f} {d.hex()}')
     def cmd_add(d:bytes = bytes(0)) -> str:
         return encrypt_command(f'add {d.hex()}')
     def get(f:int = 0, t:int = max_data_length) -> bytes:
-        print(f'Get from {f} to {t}')
+        debug(f'Get from {f} to {t}')
         write(cmd_get(f,t))
         return bytes.fromhex(read().lstrip('DATA: '))
     def replace(f:int = 0, d:bytes = bytes(0), p = password):
-        print(f'Replace from {f} using password {p} with {d}')
+        debug(f'Replace from {f} using password {p} with {d}')
         write(cmd_replace(f,d))
         if 'enter password to replace data' == read():
             write(p)
+            read()
+    def replace_hack(f:int = 0, d:bytes = bytes(0), password_on_hack_fail = password):
+        debug(f'Replace from {f} using hack with {d}')
+        write(cmd_replace_hack(f,d))
+        if 'enter password to replace data' == read():
+            debug('Hack failed')
+            write(password_on_hack_fail)
             read()
     def add(d:bytes = bytes(0)):
         print(f'Add {d}')
@@ -123,15 +137,15 @@ def get_flag():
     containing_encrypted_flag = get()
 
     # replace all data with 0
-    replace(d= bytes(len(containing_encrypted_flag)))
+    replace_hack(d= bytes(len(containing_encrypted_flag)))
 
     encryption_stream = get()
 
     containing_flag = bytes([a ^ b for a, b in zip(containing_encrypted_flag, encryption_stream)])
 
     flag_position = containing_flag.find(b'flag')
-    flag = containing_flag[flag_position : flag_position + 48]
-    print(flag)
+    flag = containing_flag[flag_position : flag_position + 42]
+    print(flag.decode())
 
     sf.close()
     s.close()
