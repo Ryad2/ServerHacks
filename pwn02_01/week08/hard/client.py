@@ -1,5 +1,7 @@
 import base64
 import socket
+import hashlib
+import random
 
 from Crypto.Cipher import AES
 
@@ -9,7 +11,16 @@ PORT = 20208
 
 COMMAND_KEY = b'u\x12K[\xab\x9e&e\xfcj\x0cQ\x01\xbf\x984'
 COMMAND_IV = b'[\xc7\xdcsMMr\xe9\\-\x13@\xb3\xedO\x85'
+SALT = bytes.fromhex('42eb477bed55bd203e1a6484406b4e495ea9261cae1826d88ed4c5ea244d6d4a')
+PW_HASH = bytes.fromhex(
+    '1303f1a8a7a9ece424f6378a9ed645e4cee214cde674c80d1ba9ff0f783ad8a228d758fe1dd7541117c5e83b32805b4aa703d35690de6e97ea45f555e19abd03'
+)
 
+max_data_length = 1000000000000000000000000000000000000000
+
+def debug(x):
+    #print(x)
+    pass
 
 def encrypt_command(command: str) -> str:
     padded = command + '_' * (AES.block_size - len(command) % AES.block_size)
@@ -42,36 +53,121 @@ def reverse_add_data(ciphered_data: bytes, data_key: bytes) -> bytes:
     return plaintext
 
 
+def guess_password():
+    # Brute force password
+    # cost parameter 2 ** n
+    ne = 16384
+    # exact log2
+    for i in range(0,32):
+        if ne == 2 ** i:
+            n = i
+            break
+    # block size
+    r = 8
+    # parallelism parameter
+    p = 1
+    # salt
+    s = SALT
+    s64 = base64.b64encode(s[:32]).decode()
+    # scrypt checksum
+    h = hashlib.scrypt("password".encode(), salt=s, n=ne, r=r, p=p)
+    h64 = base64.b64encode(h[:32]).decode()
+    # scrypt format
+    scrypt= f"SCRYPT:{n}:{r}:{p}:{s64}:{h64}"
+    debug('Hash: ' + str(scrypt))
+    with open('hash', 'w') as hf:
+        hf.write(scrypt)
+    # externally guess password from hash was not feasible
+    with open('password', 'r') as pf:
+        password = pf.read()
+    debug('Password: ' + str(password))
+    return password
+
+
 def get_flag():
+    password = '' #guess_password()
+
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     s.connect((HOST, PORT))
     sf = s.makefile('rw')  # we use a file abstraction for the sockets
 
-    message1 = sf.readline().rstrip('\n')
-    print(message1)
-    sf.flush()
-    sf.write(encrypt_command("add 3371f6ba154693185cc3e5aac70ed1009a002cfa671e5c65a61103a94a857b3f313dcc52196652edc5b67b2b66646c6bb239ba0082d382abb20adf1fd0ce077432c0474fea8e5d62b391fd07b3f4c422f0531d37680006ed377eac814e38aa45fe94b7d916d9af4f3d10a9d957ad508f7cb453b36e75160898e39f7020874dd85057ed8a9e4c25b99436e4ebec7b344c31572da46fff680db7d52697f706e0709891abaa265e56017fd6771c8150606bca6a064a3031a6746f011d01c6b1f48503f78f76a04f213aa4b1cc8eee85e4ae48b4b2546ec839b29f780473975f3a575bf7187f5ac3457a0651d8b5151b2be4") + "\n")
-    sf.flush()
-    message2 = sf.readline().rstrip('\n')
-    print(message2)
+    def write(m):
+        sf.write(m + '\n')
+        sf.flush()
+        debug('Wrote: ' + str(m))
+    def read():
+        sf.flush()
+        ln = sf.readline().rstrip('\n')
+        debug('Got: ' + str(ln))
+        return ln
+    def cmd_get(f:int = 0, t:int = max_data_length) -> str:
+        return encrypt_command(f'get {f} {t}')
+    def cmd_replace(f:int = 0, d:bytes = bytes(0)) -> str:
+        return encrypt_command(f'replace {f} {d.hex()}')
+    def cmd_replace_obfuscated(f:int = 0, d:bytes = bytes(0)) -> str:
+        return encrypt_command(f'r_e_p_l_a_c_e {f} {d.hex()}')
+    def cmd_add(d:bytes = bytes(0)) -> str:
+        return encrypt_command(f'add {d.hex()}')
+    def get(f:int = 0, t:int = max_data_length) -> bytes:
+        debug(f'Get from {f} to {t}')
+        write(cmd_get(f,t))
+        return bytes.fromhex(read().lstrip('DATA: '))
+    def replace(f:int = 0, d:bytes = bytes(0), p = password):
+        debug(f'Replace from {f} using password {p} with {d}')
+        write(cmd_replace(f,d))
+        if 'enter password to replace data' == read():
+            write(p)
+            read()
+    def replace_obfuscated(f:int = 0, d:bytes = bytes(0), password_on_hack_fail = password):
+        debug(f'Replace from {f} using hack with {d}')
+        write(cmd_replace_obfuscated(f,d))
+        if 'enter password to replace data' == read():
+            debug('Obfuscating failed to ignore password check')
+            write(password_on_hack_fail)
+            read()
+    def add(d:bytes = bytes(0)):
+        print(f'Add {d}')
+        write(cmd_add(d))
+        read()
 
 
+    # multiple solutions possible
+    SEND_STRATEGIES = ['SEND ZERO', 'SEND DATA']
+    SEND_STRATEGY = random.choice(SEND_STRATEGIES)
 
 
+    msg_welcome = read()
 
-    sf.flush()
-    sf.write(encrypt_command("get 0 1000000000000000000000000000000000000000") + "\n")
-    sf.flush()
-    message2 = sf.readline().rstrip('\n')
-    print(message2)
-    table = bytes.fromhex(message2[6:])
-    print(table)
+    # get data containing encrypted flag
+    containing_encrypted_flag = get()
 
-    3371f6ba154693185cc3e5aac70ed1009a002cfa671e5c65a61103a94a857b3f313dcc52196652edc5b67b2b66646c6bb239ba0082d382abb20adf1fd0ce077432c0474fea8e5d62b391fd07b3f4c422f0531d37680006ed377eac814e38aa45fe94b7d916d9af4f3d10a9d957ad508f7cb453b36e75160898e39f7020874dd85057ed8a9e4c25b99436e4ebec7b344c31572da46fff680db7d52697f706e0709891abaa265e56017fd6771c8150606bca6a064a3031a6746f011d01c6b1f48503f78f76a04f213aa4b1cc8eee85e4ae48b4b2546ec839b29f780473975f3a575bf7187f5ac3457a0651d8b5151b2be4
-    3371f6ba154693185cc3e5aac70ed1009a002cfa671e5c65a61103a94a857b3f313dcc52196652edc5b67b2b66646c6bb239ba0082d382abb20adf1fd0ce077432c0474fea8e5d62b391fd07b3f4c422f0531d37680006ed377eac814e38aa45fe94b08b468cfc196a47ac8e59f8538d7fbc54e969771d0e9ebbc92422d446df0c56ec89cd1f25b99436e4ebec7b344c31572da46fff680db7d52697f706e0709891abaa265e56017fd6771c8150606bca6a064a3031a6746f011d01c6b1f48503f78f76a04f213aa4b1cc8eee85e4ae48b4b2546ec839b29f780473975f3a575bf7187f5ac3457a0651d8b5151b2be4
-    0019f0778f12f2b6e0bd0e0b780671d439c026ddf05055f619a1518fd4b8baff9fca29ec89912e01d6178d5f0fe48709e0f35ecb3835c895df4ad0424c429b6ef434fccc100b09fe35d8ae09a229f71d32607013d580fabd94ece3b458b253a42c4a73780b04575524f52389e37b01a3034d85b04f9cde84c7fa5fb190b3bc4db199df58adcb11de053ada719c698256f26ee291789800cccd33033f361827cc15cfa06c2ca0360e4f32787394155ccff1a258e2396366dabb3dc0c65f58346d0f9f7e03cc97b307c275f07b7c39f2ecb613ff1b3ffdb8794fdf77fbc6fa243ea551c5c8134b0589319d7bfe2aa2dc986ba1ed4c0bcf49b8cb17911cb5504aa1
+    if SEND_STRATEGY == 'SEND ZERO':
+        # replace all data with 0
+        toSend = bytes(len(containing_encrypted_flag))
+    if SEND_STRATEGY == 'SEND DATA':
+        # re-encrypt data using symmetric method
+        toSend = containing_encrypted_flag
+    
+    # obfuscate command to use replace without password
+    replace_obfuscated(d= toSend)
 
+    # get all data again
+    got = get()
+    
+    if SEND_STRATEGY == 'SEND ZERO':
+        # 0 xor encryption_stream = encryption_stream
+        encryption_stream = got
+        # encrypted xor encryption_stream = data
+        containing_flag = bytes([a ^ b for a, b in zip(containing_encrypted_flag, encryption_stream)])
+    if SEND_STRATEGY == 'SEND DATA':
+        # server decrypted for us
+        # newdata = encrypt (data xor encryption_stream) = data xor encryption_stream xor encryption_stream = data
+        containing_flag = got
+
+    flag_position = containing_flag.find(b'flag')
+    flag = containing_flag[flag_position : flag_position + 42]
+    print(flag.decode())
 
     sf.close()
     s.close()

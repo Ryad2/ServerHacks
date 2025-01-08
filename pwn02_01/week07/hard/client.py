@@ -29,18 +29,24 @@ class PACKET_TYPE(Enum):
     DATA = 0x03
     ERROR = 0x04
 
+
+def padn(l:int, n:int)->int:
+    return (n - (l % n)) % n
+def pad(msg:bytes, n:int)->bytes:
+    return b'\0' * padn(len(msg), n)
+
 def calc_hmac(message: bytes, key: bytes) -> bytes:
     return hmac.new(key, message, digestmod='sha256').digest()
 
 def derive_keys(Z:bytes):
-    l = 256 # TODO the documentation states both 256 (l.291f) and 512 (l.437,440)
+    l = 32 # = 256 bit
     hmac_key = HKDF(master=Z, key_len=l, salt=b"salty hmac", hashmod=SHA512, context=b"HMAC Key")
     enc_key = HKDF(master=Z, key_len=l, salt=b"salty encryption", hashmod=SHA512, context=b"Encryption Key")
     return hmac_key, enc_key
 
 
 class Packet(object):
-    def __init__(self, protocol_version:int, packet_type:PACKET_TYPE, seq:int, payload:bytes, hmac:bytes=bytes(32), valid:bool=True):
+    def __init__(self, protocol_version:int, packet_type:PACKET_TYPE, seq:int, payload:bytes, hmac:bytes=bytes(32), valid:bool=None):
         self.protocol_version = protocol_version
         self.packet_type = packet_type
         self.seq = seq
@@ -48,47 +54,45 @@ class Packet(object):
         self.valid = valid
         self.hmac = hmac
     def to_bytes(self):
-        msg = bytes(self.protocol_version)[:1] + bytes(self.packet_type.value)[:1] + bytes(self.seq)[:2] + bytes(len(self.payload))[:4] + self.payload
-        # pad to multiple of 32 bytes
-        while len(msg) % 32 != 0:
-            msg += bytes(1)
-        return msg + self.hmac
+        return self.protocol_version.to_bytes(1,byteorder='big') + self.packet_type.value.to_bytes(1,byteorder='big') + self.seq.to_bytes(2,byteorder='big') + len(self.payload).to_bytes(4,byteorder='big') + self.payload + self.hmac
     def compute_hmac(self, key):
         self.hmac = bytes(32)
-        self.hmac = calc_hmac(self.to_bytes(), key)[:32]
+        self.hmac = calc_hmac(self.to_bytes(), key)
         return self
+    def __str__(self):
+        return f"protocol_version: {self.protocol_version}, packet_type: {self.packet_type}, seq: {self.seq}, payload: {self.payload.hex()}, valid: {self.valid}, hmac: {self.hmac}"
 
-def make_packet(protocol_version:int, packet_type:int, seq:int, payload:bytes, key:bytes=None) -> bytes:
+def make_packet(protocol_version:int, packet_type:PACKET_TYPE, seq:int, payload:bytes, key:bytes=None) -> bytes:
         msg = Packet(protocol_version, packet_type, seq, payload)
         if key is not None:
-            msg.compute_hmac(key)
-        return msg.to_bytes()
+            return msg.compute_hmac(key)
+        return msg
 
 def parse_packet(msg:bytes, key=None):
         protocol_version = int.from_bytes(msg[0:1], byteorder='big')
-        packet_type = int.from_bytes(msg[1:2], byteorder='big')
+        packet_type = PACKET_TYPE(int.from_bytes(msg[1:2], byteorder='big'))
         seq = int.from_bytes(msg[2:4], byteorder='big')
         l = int.from_bytes(msg[4:8], byteorder='big')
         payload = msg[8:8+l]
         i = 8+l
-        while i % 32 != 0:
-            i += 1
         hmac = msg[i:i+32]
+        if len(hmac) != 32:
+            print('Unexpected end of message, hmac expected, got:', len(hmac), hmac)
         if key is not None:
-            valid = calc_hmac(Packet(protocol_version, packet_type, seq, payload).to_bytes(),key)[:32] == hmac
+            valid = calc_hmac(Packet(protocol_version, packet_type, seq, payload).to_bytes(),key) == hmac
         else:
-            valid = True
+            valid = None
         return Packet(protocol_version, packet_type, seq, payload, hmac, valid)
 
-def calculateX(a, g = STS_GENERATOR, p = STS_PRIME):
+def gExpModP(a, g = STS_GENERATOR, p = STS_PRIME):
     return pow(g, a, mod=p)
 
 
-def verify_signature(sig, Y, X):
-    return verify(SERVER_PUB_KEY, message=f'{Y}{X}'.encode(), signature=sig)
+def verify_signature(sig, m):
+    return verify(SERVER_PUB_KEY, message=m, signature=sig)
 
-def make_signature(y, x):
-    return sign(CLIENT_PRV_KEY, message=f'{y}{x}'.encode())
+def make_signature(m):
+    return sign(CLIENT_PRV_KEY, message=m)
 
 class Encrypted(object):
     def __init__(self, enc_key, iv, message):
@@ -96,19 +100,19 @@ class Encrypted(object):
         self.iv = iv
         self.message = message
         # pad to multiple of 16 bytes
-        while (len(self.message)%16 != 0):
-            self.message += bytes(1)
+        self.message += pad(self.message, AES.block_size)
     
     def to_bytes(self):
-        cipher = AES.new(self.key_enc, AES.MODE_CBC, self.iv)
+        cipher = AES.new(self.enc_key, AES.MODE_CBC, self.iv)
         return self.iv + cipher.encrypt(self.message)
 
 def parse_encrypted(enc_key, encrypted):
-    iv = encrypted[:AES.block_size]
-    message = encrypted[AES.block_size:]
-    cipher = AES.new(key_enc, AES.MODE_CBC, iv)
+    ivlen = AES.block_size
+    iv = encrypted[:ivlen]
+    message = encrypted[ivlen:]
+    cipher = AES.new(enc_key, AES.MODE_CBC, iv)
     message = cipher.decrypt(message)
-    return Encrypted(enc_key, iv, message)
+    return Encrypted(enc_key=enc_key, iv=iv, message=message)
 
 def get_flag():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -116,14 +120,18 @@ def get_flag():
     s.connect((HOST, PORT))
     sf = s.makefile('rw')  # we use a file abstraction for the sockets
 
+    def debug(x):
+        #print(x)
+        pass
     def write(m):
-        sf.write(m.hex()+'\n')
+        sf.write(m.to_bytes().hex()+'\n')
         sf.flush()
-        print('Wrote:', m.hex())
-    def read():
+        debug('Wrote: ' + str(m) + '\n= ' + str(m.to_bytes().hex()))
+    def read(key=None):
         ln = sf.readline().rstrip('\n')
-        print('Got:', ln)
-        return parse_packet(bytes.fromhex(ln))
+        p = parse_packet(bytes.fromhex(ln), key=key)
+        debug('Got: ' + str(ln) + '\n= ' + str(p))
+        return p
 
     # Step 1
     p = read()
@@ -131,23 +139,46 @@ def get_flag():
     x = int.from_bytes(xb, byteorder='big')
 
     # Step 2
-    b = 7 # TODO
-    y = calculateX(b)
-    yb = int.to_bytes(y, len(xb), byteorder='big')
-    z = calculateX(x)
-    zb = int.to_bytes(z, len(xb), byteorder='big')
+    b = 7 # TODO random
+    y = gExpModP(b)
+    yb = int.to_bytes(y, 256, byteorder='big', signed=False)
+    z = gExpModP(b, g=x)
+    debug('z = ' + str(z))
+    zb = int.to_bytes(z, 256, byteorder='big', signed=False)
     hmac_key, enc_key = derive_keys(zb)
-    write(make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb,xb), hmac_key))
+    p = make_packet(p.protocol_version, PACKET_TYPE.KEY_EXCHANGE, p.seq + 1, yb + make_signature(yb + xb), key=hmac_key)
+    write(p)
 
     # Step 3
-    p = read()
-    if not verify_signature(p.payload, yb, xb):
-        print('Invalid signature')
+    p = read(hmac_key)
+    if not verify_signature(p.payload, xb + yb):
+        print('Invalid signature:', p.payload.decode())
+        return
     
     # Data Transmit
-    # Challenge response
-    p = read()
 
+    # Challenge response
+    debug('Challenge response')
+    p = read(hmac_key)
+    if p.packet_type is not PACKET_TYPE.CHALLENGE:
+        print('Expected challenge:', p)
+        return
+    challenge = parse_encrypted(enc_key, p.payload).message
+    debug('challenge: ' + str(challenge))
+    signature = make_signature(challenge)
+    debug('verify: ' + str(verify(CLIENT_PUB_KEY, challenge, signature)))
+    iv = bytes(AES.block_size) # TODO random
+    message = Encrypted(enc_key, iv, signature).to_bytes()
+    write(make_packet(p.protocol_version, PACKET_TYPE.RESPONSE, p.seq, message, key=hmac_key))
+
+    # Data Transmit
+    # Flag
+    p = read(hmac_key)
+    if (p.packet_type == PACKET_TYPE.ERROR):
+        print(p.payload.decode())
+        return
+    flag = parse_encrypted(enc_key, p.payload).message
+    print(flag.decode())
 
 
 if __name__ == '__main__':
