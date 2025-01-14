@@ -45,7 +45,9 @@ class TetraProtocol(asyncio.Protocol):
         # Try to parse message
         try:
             message_type, flags = unpack_type_flags(data[0])
-            log.info("msg:",message_type, flags)
+            log.info("message type: " + hex(message_type) + " flags: " + hex(flags))
+            ks = ChaCha20.new(key=secret_key, nonce=struct.pack('>Q', self.packet_counter))
+            log.info("keystream: " + str(ks.decrypt(bytes(10))))
             message_parsed = parse_message(data_decrypt)
         except Exception as e:
             log.error(f'Exception occured when parsing message: {e}')

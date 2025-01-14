@@ -6,7 +6,7 @@ import binascii
 
 from cryptography.hazmat.primitives.ciphers.algorithms import ChaCha20
 
-from pwn02_01.week09.hard.protocol import parse_message, STRUCT_DATA, pack_passwd, TYPE_DATA
+from protocol import *
 
 HOST ='localhost' # 'netsec.net.in.tum.de'
 PORT_SOURCE = 0
@@ -49,6 +49,9 @@ def get_flag(delay=0.1):
     socket_alice.send(msg_ts)
     debug('Forwarded TIMESTAMP to Alice. ' + str(msg_ts))
     time.sleep(0.1)  # wait to make sure two packets are sent
+    socket_alice.send(msg_ts)
+    debug('Forwarded TIMESTAMP to Alice. ' + str(msg_ts))
+    return
     socket_alice.send(msg_passwd)
     debug('Forwarded PASSWORD to Alice. ' + str(msg_passwd))
 
@@ -62,28 +65,32 @@ def get_flag(delay=0.1):
         debug('Reset Alice\'s packet counter by resending TIMESTAMP')
 
     reset_alice_packet_counter()
+    time.sleep(0.1)  # wait to make sure two packets are sent
 
     #debug('HELLO + TIMESTAMP ' + str(xor_bytes(msg_hello, msg_ts)))
 
     keystream = bytearray(0)
 
     #extract the flag byte
-    no_flags = msg_hello[0]
+    no_flags = msg_ack[0] ^ pack_ack()[0]
     keystream.append(no_flags)
+    debug(str(keystream))
+    socket_alice.send(xor_bytes(keystream, struct.pach('>B', TYPE_PING<<4)))
+    return
     debug("trying to guess keystream of length " + str(len(msg_passwd)))
     for i in range(1, len(msg_passwd)):
         #guess the checksum
         for checksum in range(0, 256):
             # generate data message with 0 payload
             length = len(keystream)
-            data = struct.pack('>BBsB', (TYPE_DATA << 4) + 0x1, length, b'0' * length, checksum)
+            data = struct.pack('>BBsB', (TYPE_DATA << 4) + 0x1, length, b'\0' * length, checksum)
             data = xor_bytes(data, keystream)
             # assume checksum should be 0; we receive ack if checksum = 0 ^ keystream
             debug("Testing byte " + str(i) + " with value " + str(checksum) + ":\t" + str(data))
             socket_alice.send(data)
             try:
                 ack = socket_alice.recv(1024)
-                keystream.append(checksum ^ (binascii.crc32(keystream) >> 24))
+                keystream.append(checksum ^ (binascii.crc32(keystream[1:]) >> 24))
                 reset_alice_packet_counter()
                 time.sleep(delay) # wait for reset_alice_packet_counter be processed
                 break
