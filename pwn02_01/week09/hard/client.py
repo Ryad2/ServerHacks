@@ -81,30 +81,53 @@ def get_flag():
     else:
         debug("Alice ingnored PING")
 
+    debug("Recover cipher stream at position 1")
+    for cipher_guess in range(0, 256):
+        # Use DATA format, disable CHECKSUM flag
+        data = struct.pack('>BB', (TYPE_DATA << 4), 0)
+        # encrypt header (type, flag, length)
+        data = xor_bytes(data, cipher_stream + struct.pack('>B', cipher_guess))
+        debug("Recover cipher stream byte at position 1: testing for cipher_guess = " + str(cipher_guess))
+        # Alice responds with ACK if length is read correctly
+        if test_send_alice(data):
+            # Add new value to cipher stream
+            cipher_stream.append(cipher_guess)
+            debug("Cipher_stream" + str(len(cipher_stream)) + ": " + str(cipher_stream))
+            # Jump to guessing at next position
+            break
+        else:
+            # Check if was last value
+            if cipher_guess == 255:
+                debug("Failed to recover cipher stream at position 1")
+                return
+            pass
+
     debug("Recover cipher stream from position " + str(len(cipher_stream)) + " up to position " + str(len(msg_passwd)))
     for i in range(len(cipher_stream), len(msg_passwd)):
         debug("Recover cipher stream at position " + str(i))
         # for all possible byte values
-        for checksum in range(0, 256):
+        for cipher_guess in range(0, 256):
             # Generate DATA message with payload = 0
             payload_length = len(cipher_stream) - 2
             payload = b'\0' * payload_length
+            checksum = binascii.crc32(payload) >> 24
             # Use DATA format, enable CHECKSUM flag
             data = struct.pack('>BBsB', (TYPE_DATA << 4) + 0x1, payload_length, payload, checksum)
-            # encrypt header (type, flag, length), encrypt payload, keep checksum
-            data = xor_bytes(data, cipher_stream + b'\0')
-            # since payload = 0, checksum should be: crc32(0) ^ stream_cipher[len(stream_cipher)]
-            # We can recover the cipher stream. If ACK is returned, the above holds for the used checksum value.
-            debug("Recover cipher stream byte at position " + str(i) + ": testing for checksum = " + str(checksum))
+            # encrypt header (type, flag, length), encrypt payload, encrypt checksum
+            data = xor_bytes(data, cipher_stream + struct.pack('>B', cipher_guess))
+            # Since payload is known, checksum is known. We just try all possible byte values at this position to recover the cipher stream
+            # If ACK is returned, encrypt(checksum) = checksum ^ cipher_guess holds for the used cipher_guess value.
+            debug("Recover cipher stream byte at position " + str(i) + ": testing for cipher guess = " + str(cipher_guess))
+            # Alice responds with ACK if checksum is valid
             if test_send_alice(data):
                 # Add new value to cipher stream
-                cipher_stream.append(checksum ^ (binascii.crc32(cipher_stream[1:]) >> 24))
+                cipher_stream.append(cipher_guess)
                 debug("Cipher_stream" + str(len(cipher_stream)) + ": " + str(cipher_stream))
                 # Jump to guessing at next position
                 break
             else:
                 # Check if was last value
-                if checksum == 255:
+                if cipher_guess == 255:
                     debug("Failed to recover cipher stream at position " + str(i))
                     return
                 pass
