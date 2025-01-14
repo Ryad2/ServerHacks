@@ -19,101 +19,117 @@ def debug(x):
 
 def xor_bytes(a, b):
     return bytes(x ^ y for x, y in zip(a, b))
-def get_flag(delay=0.1):
-    debug('connecting to client (alice)')
-    # Open connection to Alice and Bob
+def get_flag():
+    debug("Open connection to Alice")
     socket_alice = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    socket_alice.settimeout(delay)
     socket_alice.connect((HOST, PORT_ALICE))
+    debug("Receive HELLO from Alice")
+    msg_hello = socket_alice.recv(1024)
+    debug("Received from Alice: " + str(msg_hello))
+    debug("Close connection to Alice")
+    socket_alice.close()
 
-    debug('connecting to server (bob)')
-
+    debug('Open connection to Bob')
     socket_bob = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     socket_bob.connect((HOST, PORT_BOB))
-
-    debug('Connected to Alice and Bob')
-
-    # Receive initial HELLO from Alice and forward to Bob
-    msg_hello = socket_alice.recv(1024)
+    debug("Forward HELLO to Bob: " + str(msg_hello))
     socket_bob.send(msg_hello)
-
-    debug('Received HELLO message from Alice. ' + str(msg_hello))
-
-    # Receive timestamp and passwd frames
+    debug("Receive TIMESTAMP from Bob")
     msg_ts = socket_bob.recv(1024)
+    debug("Received from Bob: " + str(msg_ts))
+    debug("Receive PASSWORD from Bob")
     msg_passwd = socket_bob.recv(1024)
+    debug("Received from Bob: " + str(msg_passwd))
 
-    debug('Received TIMESTAMP and PASSWORD message from Bob.')
 
-    # Foward timestamp and data to alice with wait
-    socket_alice.send(msg_ts)
-    debug('Forwarded TIMESTAMP to Alice. ' + str(msg_ts))
-    time.sleep(0.1)  # wait to make sure two packets are sent
-    socket_alice.send(msg_ts)
-    debug('Forwarded TIMESTAMP to Alice. ' + str(msg_ts))
-    return
-    socket_alice.send(msg_passwd)
-    debug('Forwarded PASSWORD to Alice. ' + str(msg_passwd))
-
-    # Receive ACK from Alice and forward to Bob to ensure increase of packet counter
-    msg_ack = socket_alice.recv(1024)
-    #socket_bob.send(msg_ack)
-    debug('Received ACK from Alice. not forwarding. ' + str(msg_ack))
-
-    def reset_alice_packet_counter():
+    def test_send_alice(msg, delay=0.1):
+        debug("Open connection to Alice")
+        socket_alice = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        socket_alice.settimeout(delay)
+        socket_alice.connect((HOST, PORT_ALICE))
+        debug("Receive HELLO from Alice")
+        msg_hello = socket_alice.recv(1024)
+        debug("Received from Alice: " + str(msg_hello))
+        debug("Forward TIMESTAMP to Alice: " + str(msg_ts))
         socket_alice.send(msg_ts)
-        debug('Reset Alice\'s packet counter by resending TIMESTAMP')
+        # Wait to separate messages 
+        time.sleep(delay)
+        debug("Send test message to Alice: " + str(msg))
+        socket_alice.send(msg)
+        debug("Wait for ACK from Alice")
+        try:
+            ack = socket_alice.recv(1024)
+            debug("Received ACK from Alice")
+            rval = True
+        except:
+            debug("Received nothing from Alice")
+            rval = False
+        debug("Close connection to Alice")
+        socket_alice.close()
+        return rval
 
-    reset_alice_packet_counter()
-    time.sleep(0.1)  # wait to make sure two packets are sent
+    debug("Recovering cipher stream for TIMESTAMP")
+    cipher_stream = bytearray(0)
 
-    #debug('HELLO + TIMESTAMP ' + str(xor_bytes(msg_hello, msg_ts)))
+    debug("Extracting the first cipher stream byte from PASSWORD")
+    cipher_stream.append(msg_passwd[0] ^ pack_passwd(bytes(0))[0])
+    debug("Cipher_stream" + str(len(cipher_stream)) + ": " + str(cipher_stream))
 
-    keystream = bytearray(0)
+    debug("PINGing Alice to check validity")
+    if test_send_alice(xor_bytes(cipher_stream, struct.pack('>B', TYPE_PING << 4))):
+        debug("Alice responded to PING")
+    else:
+        debug("Alice ingnored PING")
 
-    #extract the flag byte
-    no_flags = msg_ack[0] ^ pack_ack()[0]
-    keystream.append(no_flags)
-    debug(str(keystream))
-    socket_alice.send(xor_bytes(keystream, struct.pach('>B', TYPE_PING<<4)))
-    return
-    debug("trying to guess keystream of length " + str(len(msg_passwd)))
-    for i in range(1, len(msg_passwd)):
-        #guess the checksum
+    debug("Recover cipher stream from position " + str(len(cipher_stream)) + " up to position " + str(len(msg_passwd)))
+    for i in range(len(cipher_stream), len(msg_passwd)):
+        debug("Recover cipher stream at position " + str(i))
+        # for all possible byte values
         for checksum in range(0, 256):
-            # generate data message with 0 payload
-            length = len(keystream)
-            data = struct.pack('>BBsB', (TYPE_DATA << 4) + 0x1, length, b'\0' * length, checksum)
-            data = xor_bytes(data, keystream)
-            # assume checksum should be 0; we receive ack if checksum = 0 ^ keystream
-            debug("Testing byte " + str(i) + " with value " + str(checksum) + ":\t" + str(data))
-            socket_alice.send(data)
-            try:
-                ack = socket_alice.recv(1024)
-                keystream.append(checksum ^ (binascii.crc32(keystream[1:]) >> 24))
-                reset_alice_packet_counter()
-                time.sleep(delay) # wait for reset_alice_packet_counter be processed
+            # Generate DATA message with payload = 0
+            payload_length = len(cipher_stream) - 2
+            payload = b'\0' * payload_length
+            # Use DATA format, enable CHECKSUM flag
+            data = struct.pack('>BBsB', (TYPE_DATA << 4) + 0x1, payload_length, payload, checksum)
+            # encrypt header (type, flag, length), encrypt payload, keep checksum
+            data = xor_bytes(data, cipher_stream + b'\0')
+            # since payload = 0, checksum should be: crc32(0) ^ stream_cipher[len(stream_cipher)]
+            # We can recover the cipher stream. If ACK is returned, the above holds for the used checksum value.
+            debug("Recover cipher stream byte at position " + str(i) + ": testing for checksum = " + str(checksum))
+            if test_send_alice(data):
+                # Add new value to cipher stream
+                cipher_stream.append(checksum ^ (binascii.crc32(cipher_stream[1:]) >> 24))
+                debug("Cipher_stream" + str(len(cipher_stream)) + ": " + str(cipher_stream))
+                # Jump to guessing at next position
                 break
-            except:
+            else:
+                # Check if was last value
                 if checksum == 255:
-                    debug("Failed")
+                    debug("Failed to recover cipher stream at position " + str(i))
+                    return
                 pass
 
-    decrypted_msg_password = xor_bytes(msg_passwd, keystream)
-    password = parse_message(decrypted_msg_password)[1]
+    debug("Recovered cipher stream up to position " + str(len(cipher_stream)))
+    debug("Cipher_stream" + str(len(cipher_stream)) + ": " + str(cipher_stream))
+
+    debug("Decrypt PASSWORD message: " + str(msg_passwd))
+    decrypted_msg_password = xor_bytes(msg_passwd, cipher_stream)
+    debug("Decrypted PASSWORD message: " + str(decrypted_msg_password))
+    password = parse_message(decrypted_msg_password)[1]    
     password_hash = hashlib.sha256(password).digest()[:4]
+    debug("Parsed decrypted PASSWORD message: password = " + str(password) + ", hash(password) = " + str(password_hash))
+    debug("Send PASSWORD request to Bob")
     socket_bob.send(pack_passwd(password_hash))
 
+    debug("Receive FLAG from Bob")
     msg_flag = socket_bob.recv(1024)
-    debug("msg_flag" + str(msg_flag))
+    debug("Received FLAG message from Bob: " + str(msg_flag))
+    # flag is not encrypted
     flag = msg_flag[1:]
     print (flag)
 
-
-    # Close
+    debug("Close conncetion to Bob")
     socket_bob.close()
-    socket_alice.close()
-
 
 if __name__ == '__main__':
     get_flag()
