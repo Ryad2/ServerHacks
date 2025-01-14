@@ -112,7 +112,7 @@ def get_flag():
             payload = b'\0' * payload_length
             checksum = binascii.crc32(payload) >> 24
             # Use DATA format, enable CHECKSUM flag
-            data = struct.pack('>BBsB', (TYPE_DATA << 4) + 0x1, payload_length, payload, checksum)
+            data = struct.pack('>BB' + str(payload_length) + 'sB', (TYPE_DATA << 4) + 0x1, payload_length, payload, checksum)
             # encrypt header (type, flag, length), encrypt payload, encrypt checksum
             data = xor_bytes(data, cipher_stream + struct.pack('>B', cipher_guess))
             # Since payload is known, checksum is known. We just try all possible byte values at this position to recover the cipher stream
@@ -142,7 +142,7 @@ def get_flag():
     password_hash = hashlib.sha256(password).digest()[:4]
     debug("Parsed decrypted PASSWORD message: password = " + str(password) + ", hash(password) = " + str(password_hash))
     debug("Send PASSWORD request to Bob")
-    socket_bob.send(pack_passwd(password_hash))
+    socket_bob.send(xor_bytes(pack_passwd(password_hash), cipher_stream))
 
     debug("Receive FLAG from Bob")
     msg_flag = socket_bob.recv(1024)
