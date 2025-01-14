@@ -61,6 +61,7 @@ def parse_message(data):
         return tuple()
 
     message_type, flags = unpack_type_flags(data[0])
+    print(message_type)
     if message_type == TYPE_HELLO:
         if len(data) > 1:
             log.error('More than one byte received for HELLO')

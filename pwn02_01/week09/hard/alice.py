@@ -44,6 +44,8 @@ class TetraProtocol(asyncio.Protocol):
 
         # Try to parse message
         try:
+            message_type, flags = unpack_type_flags(data[0])
+            log.info("msg:",message_type, flags)
             message_parsed = parse_message(data_decrypt)
         except Exception as e:
             log.error(f'Exception occured when parsing message: {e}')
