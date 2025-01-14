@@ -8,13 +8,13 @@ from cryptography.hazmat.primitives.ciphers.algorithms import ChaCha20
 
 from protocol import *
 
-HOST ='localhost' # 'netsec.net.in.tum.de'
+HOST = 'netsec.net.in.tum.de'
 PORT_SOURCE = 0
 PORT_ALICE = 20209 if PORT_SOURCE == 0 else (42 if  PORT_SOURCE == 1 else 20011)
 PORT_BOB = 20309 if PORT_SOURCE == 0 else (43 if  PORT_SOURCE == 1 else 20111)
 
 def debug(x):
-    print(x)
+    #print(x)
     pass
 
 def xor_bytes(a, b):
@@ -149,7 +149,7 @@ def get_flag():
     debug("Received FLAG message from Bob: " + str(msg_flag))
     # flag is not encrypted
     flag = msg_flag[1:]
-    print (flag)
+    print (flag.decode().rstrip('\n'))
 
     debug("Close conncetion to Bob")
     socket_bob.close()
